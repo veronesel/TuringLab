@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-base: var(--bg-base);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-element: var(--bg-element);
+  --color-border-main: var(--border-main);
+  --color-border-active: var(--border-active);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+
+  --color-primary-base: var(--primary-base);
+  --color-primary-dark: var(--primary-dark);
+}
+
+:root {
+  /* Default Dark Gold */
+  --bg-base: #010409;
+  --bg-panel: #161B22;
+  --bg-surface: #0D1117;
+  --bg-element: #21262D;
+  --border-main: #2D333B;
+  --border-active: #30363D;
+  --text-primary: #E0E0E0;
+  --text-secondary: #8B949E;
+  --text-muted: #6E7681;
+  --text-faint: #484F58;
+  --primary-base: #f59e0b; /* amber-500 */
+  --primary-dark: #d97706; /* amber-600 */
+}
+
+/* Dark Themes */
+.theme-dark-gold {
+  --primary-base: #f59e0b;
+  --primary-dark: #d97706;
+}
+.theme-dark-cyan {
+  --primary-base: #06b6d4;
+  --primary-dark: #0891b2;
+}
+.theme-dark-purple {
+  --primary-base: #a855f7;
+  --primary-dark: #9333ea;
+}
+.theme-dark-rose {
+  --primary-base: #f43f5e;
+  --primary-dark: #e11d48;
+}
+.theme-dark-emerald {
+  --primary-base: #10b981;
+  --primary-dark: #059669;
+}
+
+/* Light Themes */
+[data-theme="light"] {
+  --bg-base: #f8fafc;
+  --bg-panel: #ffffff;
+  --bg-surface: #f1f5f9;
+  --bg-element: #e2e8f0;
+  --border-main: #cbd5e1;
+  --border-active: #94a3b8;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --primary-base: #3b82f6;
+  --primary-dark: #2563eb;
+}
+
+.theme-light-blue {
+  --primary-base: #3b82f6;
+  --primary-dark: #2563eb;
+}
+.theme-light-violet {
+  --primary-base: #8b5cf6;
+  --primary-dark: #7c3aed;
+}
+.theme-light-orange {
+  --primary-base: #f97316;
+  --primary-dark: #ea580c;
+}
+.theme-light-teal {
+  --primary-base: #14b8a6;
+  --primary-dark: #0d9488;
+}
+.theme-light-pink {
+  --primary-base: #ec4899;
+  --primary-dark: #db2777;
+}
+
+.react-flow__controls {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-main) !important;
+  border-radius: 4px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.react-flow__controls-button {
+  background: var(--bg-surface) !important;
+  border-bottom: 1px solid var(--border-main) !important;
+  color: var(--text-primary) !important;
+  fill: var(--text-primary) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--bg-element) !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
