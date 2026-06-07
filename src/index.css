@@ -15,6 +15,9 @@
 
   --color-primary-base: var(--primary-base);
   --color-primary-dark: var(--primary-dark);
+
+  --color-diagram-bg: var(--diagram-bg);
+  --color-diagram-node: var(--diagram-node);
 }
 
 :root {
@@ -31,6 +34,9 @@
   --text-faint: #484F58;
   --primary-base: #f59e0b; /* amber-500 */
   --primary-dark: #d97706; /* amber-600 */
+  
+  --diagram-bg: #0A0D12;
+  --diagram-node: #1F242C;
 }
 
 /* Dark Themes */
@@ -69,6 +75,9 @@
   --text-faint: #94a3b8;
   --primary-base: #3b82f6;
   --primary-dark: #2563eb;
+  
+  --diagram-bg: #e2e8f0;
+  --diagram-node: #ffffff;
 }
 
 .theme-light-blue {

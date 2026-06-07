@@ -43,10 +43,10 @@ export const RuleEditor: React.FC = () => {
   const hasChanges = JSON.stringify(rules) !== JSON.stringify(localRules);
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden font-mono">
-      <div className="p-3 bg-bg-panel border-b border-border-main flex justify-between items-center shrink-0">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted font-sans">Instructions / Rules</span>
-        <div className="flex gap-2 font-sans">
+    <div className="flex flex-col flex-1 overflow-hidden font-mono min-w-0">
+      <div className="p-3 bg-bg-panel border-b border-border-main flex justify-between items-center shrink-0 min-w-0 overflow-x-auto no-scrollbar gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted font-sans shrink-0">Instructions / Rules</span>
+        <div className="flex gap-2 font-sans shrink-0">
           <button 
             onClick={addRule} 
             disabled={isRunning} 
@@ -64,11 +64,12 @@ export const RuleEditor: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto text-[10px] p-2">
-        <table className="w-full">
+      <div className="flex-1 overflow-y-auto text-[10px] p-2 overflow-x-auto w-full">
+        <table className="w-full table-fixed min-w-[300px]">
           <thead className="text-text-muted border-b border-border-main text-left sticky top-0 bg-bg-surface z-10">
             <tr>
-              <th className="pb-1 font-normal w-1/5">ST</th>
+              <th className="pb-1 font-normal w-6 text-center text-text-faint">#</th>
+              <th className="pb-1 font-normal w-1/5 pl-2">ST</th>
               <th className="pb-1 font-normal w-[15%]">IN</th>
               <th className="pb-1 font-normal w-[15%]">OUT</th>
               <th className="pb-1 font-normal w-[15%]">MV</th>
@@ -77,16 +78,27 @@ export const RuleEditor: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#161B22]">
-            {localRules.map(rule => {
+            {localRules.map((rule, index) => {
               const isActive = lastRuleId === rule.id;
+              
+              const getStateColor = (s: string) => {
+                const lower = s.toLowerCase();
+                if (lower.includes('accept') || lower.includes('halt') || lower.includes('found') || s === 'H') return 'text-red-400';
+                if (lower.includes('start') || s === 'q0' || s === 'A') return 'text-green-400';
+                return 'text-blue-400';
+              };
+              const getSymbolColor = (s: string) => s === '_' ? 'text-text-muted' : 'text-amber-400';
+              const getDirColor = (d: string) => d === 'L' ? 'text-purple-400' : d === 'R' ? 'text-cyan-400' : 'text-text-muted';
+
               return (
-                <tr key={rule.id} className={isActive ? 'bg-primary-base/10 text-primary-base' : 'text-text-secondary hover:bg-bg-panel'}>
-                  <td className="py-1">
+                <tr key={rule.id} className={isActive ? 'bg-primary-base/10 shadow-sm' : 'hover:bg-bg-panel'}>
+                  <td className="py-1 text-center text-text-faint border-r border-[#161B22]/50">{index + 1}</td>
+                  <td className="py-1 pl-2">
                     <input 
                       value={rule.currentState} 
                       onChange={e => updateRule(rule.id, 'currentState', e.target.value)}
                       disabled={isRunning}
-                      className="w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 text-inherit"
+                      className={`w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 ${isActive ? 'text-primary-base font-bold' : getStateColor(rule.currentState)}`}
                     />
                   </td>
                   <td className="py-1 font-bold">
@@ -95,7 +107,7 @@ export const RuleEditor: React.FC = () => {
                       onChange={e => updateRule(rule.id, 'readSymbol', e.target.value)}
                       disabled={isRunning}
                       maxLength={1}
-                      className="w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 text-inherit text-center"
+                      className={`w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 text-center ${isActive ? 'text-primary-base' : getSymbolColor(rule.readSymbol)}`}
                     />
                   </td>
                   <td className="py-1">
@@ -104,7 +116,7 @@ export const RuleEditor: React.FC = () => {
                       onChange={e => updateRule(rule.id, 'writeSymbol', e.target.value)}
                       disabled={isRunning}
                       maxLength={1}
-                      className="w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 text-inherit text-center"
+                      className={`w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 text-center font-bold ${isActive ? 'text-primary-base' : getSymbolColor(rule.writeSymbol)}`}
                     />
                   </td>
                   <td className="py-1 font-bold">
@@ -112,7 +124,7 @@ export const RuleEditor: React.FC = () => {
                       value={rule.moveDirection}
                       onChange={e => updateRule(rule.id, 'moveDirection', e.target.value as Direction)}
                       disabled={isRunning}
-                      className="w-full bg-transparent outline-none focus:bg-bg-element rounded text-inherit appearance-none cursor-pointer"
+                      className={`w-full bg-transparent outline-none focus:bg-bg-element rounded appearance-none cursor-pointer text-center ${isActive ? 'text-primary-base' : getDirColor(rule.moveDirection)}`}
                     >
                       <option className="bg-bg-panel" value="L">L</option>
                       <option className="bg-bg-panel" value="R">R</option>
@@ -124,10 +136,10 @@ export const RuleEditor: React.FC = () => {
                       value={rule.nextState} 
                       onChange={e => updateRule(rule.id, 'nextState', e.target.value)}
                       disabled={isRunning}
-                      className="w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 text-inherit"
+                      className={`w-full bg-transparent outline-none focus:bg-bg-element rounded px-1 -ml-1 ${isActive ? 'text-primary-base font-bold' : getStateColor(rule.nextState)}`}
                     />
                   </td>
-                  <td className="py-1 text-right">
+                  <td className="py-1 text-right pr-1">
                     <button onClick={() => removeRule(rule.id)} disabled={isRunning} className="text-red-900/50 hover:text-red-500 disabled:opacity-50 transition-colors">
                       <Trash2 size={12} />
                     </button>

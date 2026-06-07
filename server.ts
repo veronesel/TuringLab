@@ -5,6 +5,34 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+async function generateWithRetry(prompt: string, maxRetries = 3) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      const model = attempt % 2 === 0 ? "gemini-2.5-flash" : "gemini-2.5-pro";
+      return await ai.models.generateContent({
+        model,
+        contents: prompt,
+      });
+    } catch (error: any) {
+      attempt++;
+      const isRetriable = 
+        error?.status === 503 || 
+        error?.status === 429 || 
+        error?.status === 'UNAVAILABLE' ||
+        error?.message?.includes("503") || 
+        error?.message?.includes("429");
+        
+      if (attempt >= maxRetries || !isRetriable) {
+        throw error;
+      }
+      console.warn(`Model generation attempt ${attempt} failed, retrying... (${error.message})`);
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+  throw new Error("Failed to generate content after retries");
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -45,19 +73,18 @@ async function startServer() {
         ]
       }
       
-      Respond with ONLY valid JSON, no markdown formatting. The symbols on the tape should be single characters.
+      Respond with ONLY valid, parseable JSON, no markdown formatting, and NO COMMENTS in the JSON. The symbols on the tape should be single characters.
       If a rule reads empty/blank, use "_" (underscore). Write "_" for blank.
       Make sure the logic corresponds correctly to the user's objective (e.g. unary addition, binary palindrome, busy beaver, etc).`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
+      const response = await generateWithRetry(prompt);
       let responseText = response.text || "";
       // Clean up markdown wrapper
       if (responseText.startsWith("```json")) {
         responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
       }
+      // Remove any trailing or inline comments from the parsed JSON text
+      responseText = responseText.replace(/\/\/.*$/gm, '').trim();
 
       const configuration = JSON.parse(responseText);
       res.json({ configuration });
@@ -79,10 +106,7 @@ async function startServer() {
       
       Respond with plain text only, no markdown formatting.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
+      const response = await generateWithRetry(prompt);
       res.json({ explanation: response.text || "Explanation could not be generated." });
     } catch (error: any) {
       console.error(error);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTMStore } from './store/tmStore';
+import { useScenariosStore } from './store/scenariosStore';
 import { presetScenarios } from './data/scenarios';
 import { Tape } from './components/turing/Tape';
 import { StateDiagram } from './components/turing/StateDiagram';
@@ -7,10 +8,27 @@ import { Controls } from './components/turing/Controls';
 import { Statistics, Debugger } from './components/turing/Statistics';
 import { ScenarioLibrary } from './components/turing/ScenarioLibrary';
 import { RuleEditor } from './components/turing/RuleEditor';
-import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun } from 'lucide-react';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { ShortcutsModal } from './components/turing/ShortcutsModal';
+import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
 import { useThemeStore, DARK_SCHEMAS, LIGHT_SCHEMAS } from './store/themeStore';
+
+const renderHandle = (direction: 'horizontal' | 'vertical') => (
+  <PanelResizeHandle
+    className={`group flex items-center justify-center bg-transparent z-40 shrink-0 transition-colors cursor-${direction === 'horizontal' ? 'col' : 'row'}-resize ${direction === 'horizontal' ? 'w-2 relative' : 'h-2 relative'}`}
+  >
+    <div className={`
+      flex items-center justify-center bg-transparent group-hover:bg-primary-base/20 group-active:bg-primary-base/30
+      transition-colors rounded-[2px]
+      ${direction === 'horizontal' ? 'w-2 h-12' : 'h-2 w-12'}
+    `}>
+       {direction === 'horizontal' ? <GripVertical size={12} className="text-border-active group-hover:text-primary-base opacity-50" /> : <GripHorizontal size={12} className="text-border-active group-hover:text-primary-base opacity-50" />}
+    </div>
+    <div className={`absolute bg-border-main z-[-1] pointer-events-none transition-colors group-hover:bg-primary-base/50 ${direction === 'horizontal' ? 'w-[1px] h-full' : 'h-[1px] w-full'}`} />
+  </PanelResizeHandle>
+);
 
 export default function App() {
   const loadScenario = useTMStore(state => state.loadScenario);
@@ -19,8 +37,34 @@ export default function App() {
   const [isTourActive, setIsTourActive] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  
+  const [activeLayoutId, setActiveLayoutId] = useState('turing-layout-custom');
+  const [layoutResetKey, setLayoutResetKey] = useState(0);
+
+  const resetLayout = () => {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('react-resizable-panels:turing-layout-')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    setLayoutResetKey(prev => prev + 1);
+  };
+  
+  const handleLayoutPreset = (preset: 'default' | 'diagram' | 'custom') => {
+    setActiveLayoutId(`turing-layout-${preset}`);
+    if (preset === 'default') {
+      localStorage.removeItem('react-resizable-panels:turing-layout-default');
+    } else if (preset === 'diagram') {
+      localStorage.removeItem('react-resizable-panels:turing-layout-diagram');
+    }
+  };
 
   const { themeMode, colorSchema, toggleThemeMode, setColorSchema } = useThemeStore();
+  const { activeScenarios, addActiveScenario } = useScenariosStore();
 
   useEffect(() => {
     // Sync document theme
@@ -34,11 +78,39 @@ export default function App() {
 
   const schemas = themeMode === 'dark' ? DARK_SCHEMAS : LIGHT_SCHEMAS;
 
+  const isRunning = useTMStore(state => state.isRunning);
+  const run = useTMStore(state => state.run);
+  const pause = useTMStore(state => state.pause);
+  const resetMachine = useTMStore(state => state.resetMachine);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (isRunning) pause();
+        else run();
+      } else if (e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        resetMachine();
+      } else if (e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('toggle-sidebar'));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRunning, run, pause, resetMachine]);
+
   useEffect(() => {
     if (!activeScenario) {
-      loadScenario(presetScenarios[0]);
+      const defaultSc = presetScenarios[0];
+      addActiveScenario(defaultSc);
+      loadScenario(defaultSc);
     }
-  }, [activeScenario, loadScenario]);
+  }, [activeScenario, loadScenario, addActiveScenario]);
 
   const handleExplainLogic = async () => {
     if (!activeScenario) return;
@@ -110,7 +182,38 @@ export default function App() {
           >
             <BrainCircuit size={12} /> EXPLAIN LOGIC
           </button>
+          
+          <div className="flex bg-bg-surface border border-border-main rounded p-0.5 ml-2">
+            <div className="flex items-center pl-2 pr-1 text-text-muted">
+              <LayoutDashboard size={12} />
+            </div>
+            <select 
+              value={activeLayoutId.replace('turing-layout-', '')} 
+              onChange={e => handleLayoutPreset(e.target.value as any)}
+              className="bg-transparent text-[10px] font-bold text-text-secondary outline-none px-1 py-1 uppercase appearance-none cursor-pointer"
+            >
+              <option value="custom" className="bg-bg-panel">Custom Layout</option>
+              <option value="default" className="bg-bg-panel">Default Focus</option>
+              <option value="diagram" className="bg-bg-panel">Diagram Focus</option>
+            </select>
+            <button 
+              onClick={resetLayout}
+              className="flex items-center justify-center px-1.5 ml-1 hover:bg-bg-element rounded text-text-secondary transition-colors"
+              title="Reset Layout"
+            >
+              <RotateCcw size={12} />
+            </button>
+          </div>
+          
           <div className="h-4 w-px bg-border-main"></div>
+          
+          <button 
+            onClick={() => setIsShortcutsModalOpen(true)}
+            className="flex items-center justify-center p-1.5 hover:bg-bg-element rounded-full text-text-secondary transition-colors"
+            title="Keyboard Shortcuts"
+          >
+            <Keyboard size={16} />
+          </button>
           <button 
             onClick={() => setIsTourActive(true)}
             className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold bg-[#1d4ed8]/20 text-[#93c5fd] border border-[#3b82f6]/30 rounded hover:bg-[#1d4ed8]/40 transition-colors"
@@ -148,34 +251,127 @@ export default function App() {
 
 
       {/* Main Workspace */}
-      <div className="flex flex-1 overflow-hidden">
-        
-        {/* Left Sidebar */}
-        <div data-tour="library" className="h-full z-10"><ScenarioLibrary /></div>
-        
-        <main className="flex-1 flex flex-col bg-bg-base">
-          <div className="h-[220px] border-b border-border-main relative overflow-hidden flex flex-col shrink-0">
-            <div data-tour="tape" className="flex-1 flex flex-col"><Tape /></div>
-            <div data-tour="controls"><Controls /></div>
-          </div>
-          
-          <div className="flex-1 flex overflow-hidden">
-            <div data-tour="diagram" className="flex-1 relative overflow-hidden flex flex-col">
-               <StateDiagram />
-            </div>
+      <PanelGroup 
+        key={`${activeLayoutId}-v-${layoutResetKey}`}
+        id={`${activeLayoutId}-v`}
+        orientation="vertical" 
+        className="flex-1 overflow-hidden min-h-0 min-w-0"
+        onLayoutChanged={(layout) => {
+          if (activeLayoutId === 'turing-layout-custom') {
+            localStorage.setItem('react-resizable-panels:turing-layout-custom-v', JSON.stringify(layout));
+          }
+        }}
+        defaultLayout={
+          activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-v') 
+            ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-v')!) 
+            : undefined
+        }
+      >
+        <Panel defaultSize={80} minSize={50} className="min-h-0 min-w-0 flex flex-col">
+          <PanelGroup 
+            key={`${activeLayoutId}-h-${layoutResetKey}`}
+            id={`${activeLayoutId}-h`}
+            orientation="horizontal" 
+            className="w-full h-full min-h-0 min-w-0"
+            onLayoutChanged={(layout) => {
+              if (activeLayoutId === 'turing-layout-custom') {
+                localStorage.setItem('react-resizable-panels:turing-layout-custom-h', JSON.stringify(layout));
+              }
+            }}
+            defaultLayout={
+              activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-h') 
+                ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-h')!) 
+                : undefined
+            }
+          >
             
-            <aside data-tour="rules" className="w-[320px] border-l border-border-main bg-bg-surface flex flex-col z-10">
-              <RuleEditor />
-              <Statistics />
-            </aside>
-          </div>
-        </main>
-      </div>
+            {/* Left Sidebar */}
+            <Panel defaultSize={20} minSize={10} className="min-h-0 min-w-0 flex flex-col">
+              <div data-tour="library" className="w-full h-full z-10 block border-r border-border-main min-h-0 min-w-0"><ScenarioLibrary /></div>
+            </Panel>
 
-      <footer data-tour="stats" className="h-[140px] border-t border-border-main bg-bg-surface flex shrink-0 z-10 w-full">
-         <Debugger />
-      </footer>
-      
+            {renderHandle('horizontal')}
+
+            {/* Center & Right */}
+            <Panel defaultSize={80} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+              <PanelGroup 
+                key={`${activeLayoutId}-center-h-${layoutResetKey}`}
+                id={`${activeLayoutId}-center-h`}
+                orientation="horizontal"
+                className="w-full h-full min-h-0 min-w-0"
+                onLayoutChanged={(layout) => {
+                  if (activeLayoutId === 'turing-layout-custom') {
+                    localStorage.setItem('react-resizable-panels:turing-layout-custom-center-h', JSON.stringify(layout));
+                  }
+                }}
+                defaultLayout={
+                  activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-center-h') 
+                    ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-center-h')!) 
+                    : undefined
+                }
+              >
+                <Panel defaultSize={70} minSize={10} className="min-h-0 min-w-0 flex flex-col">
+                  <PanelGroup 
+                    key={`${activeLayoutId}-center-v-${layoutResetKey}`}
+                    id={`${activeLayoutId}-center-v`}
+                    orientation="vertical"
+                    className="w-full h-full min-h-0 min-w-0 bg-bg-base"
+                    onLayoutChanged={(layout) => {
+                      if (activeLayoutId === 'turing-layout-custom') {
+                        localStorage.setItem('react-resizable-panels:turing-layout-custom-center-v', JSON.stringify(layout));
+                      }
+                    }}
+                    defaultLayout={
+                      activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-center-v') 
+                        ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-center-v')!) 
+                        : undefined
+                    }
+                  >
+                    <Panel defaultSize={35} minSize={15} className="min-h-0 min-w-0 flex flex-col">
+                      <div className="border-b border-border-main w-full h-full relative overflow-hidden flex flex-col min-h-0 min-w-0">
+                        <div data-tour="tape" className="flex-1 flex flex-col min-h-0 min-w-0"><Tape /></div>
+                        <div data-tour="controls" className="shrink-0 min-w-0"><Controls /></div>
+                      </div>
+                    </Panel>
+                    
+                    {renderHandle('vertical')}
+                    
+                    <Panel defaultSize={65} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+                      <div className="w-full h-full relative flex flex-col min-h-0 min-w-0">
+                        <div data-tour="diagram" className="flex-1 w-full relative overflow-hidden flex flex-col bg-bg-base min-h-0 min-w-0">
+                          <StateDiagram />
+                        </div>
+                      </div>
+                    </Panel>
+                  </PanelGroup>
+                </Panel>
+                
+                {activeLayoutId !== 'turing-layout-diagram' && (
+                  <>
+                    {renderHandle('horizontal')}
+                    <Panel defaultSize={30} minSize={10} className="min-h-0 min-w-0 flex flex-col">
+                      <aside data-tour="rules" className="w-full h-full bg-bg-surface flex flex-col z-10 border-l border-border-main min-h-0 min-w-0">
+                        <RuleEditor />
+                        <Statistics />
+                      </aside>
+                    </Panel>
+                  </>
+                )}
+              </PanelGroup>
+            </Panel>
+          </PanelGroup>
+        </Panel>
+
+        {renderHandle('vertical')}
+
+        <Panel defaultSize={20} minSize={10} className="min-h-0 min-w-0 flex flex-col">
+          <footer data-tour="stats" className="w-full h-full border-t border-border-main bg-bg-surface flex shrink-0 z-10">
+            <Debugger />
+          </footer>
+        </Panel>
+      </PanelGroup>
+
+      <ShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
       <HelpSidebar />
     </div>
   );

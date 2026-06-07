@@ -10,6 +10,7 @@ const StateDiagramInternal: React.FC = () => {
   const lastRuleId = useTMStore(state => state.lastRuleId);
   const status = useTMStore(state => state.status);
   const { fitView } = useReactFlow();
+  const [autoFit, setAutoFit] = React.useState(true);
 
   const { nodes, edges } = useMemo(() => {
     const states = new Set<string>();
@@ -36,7 +37,7 @@ const StateDiagramInternal: React.FC = () => {
       const isStart = activeScenario?.initialState === stateName;
       const isActive = stateName === currentState;
 
-      let bgColor = isActive ? 'var(--color-primary-base)' : 'var(--color-bg-panel)';
+      let bgColor = isActive ? 'var(--color-primary-base)' : 'var(--color-diagram-node)';
       if (status === 'error' && isActive) bgColor = '#ef4444';
       if (status === 'rejected' && isActive) bgColor = '#f97316';
 
@@ -119,23 +120,54 @@ const StateDiagramInternal: React.FC = () => {
     return { nodes: newNodes, edges: newEdges };
   }, [rules, activeScenario, currentState, lastRuleId, status]);
 
+  // Monitor canvas resize events and automatically re-center the diagram
+  const resizeObserver = useMemo(() => new ResizeObserver(() => {
+    if (autoFit) {
+      window.requestAnimationFrame(() => {
+        fitView({ padding: 0.2, duration: 300 });
+      });
+    }
+  }), [autoFit, fitView]);
+
+  useEffect(() => {
+    const rfEl = document.querySelector('.react-flow');
+    if (rfEl) {
+      resizeObserver.observe(rfEl);
+    }
+    return () => resizeObserver.disconnect();
+  }, [resizeObserver]);
+
   // Re-fit view when scenario changes
   useEffect(() => {
-    setTimeout(() => {
-      fitView({ padding: 0.2, duration: 800 });
-    }, 100);
-  }, [activeScenario, fitView]);
+    if (autoFit) {
+      setTimeout(() => {
+        fitView({ padding: 0.2, duration: 800 });
+      }, 100);
+    }
+  }, [activeScenario, autoFit, fitView]);
 
   return (
-    <div className="flex-1 relative bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] overflow-hidden flex flex-col">
-      <div className="p-3 flex justify-between bg-bg-base/80 z-10 relative pointer-events-none shrink-0 border-b border-border-main">
-         <span className="text-[10px] font-bold text-primary-base/50 tracking-widest uppercase italic font-sans">Visual State Diagram v0.1</span>
-         <div className="flex gap-2 font-sans">
-           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-primary-base shadow-[0_0_5px_#f59e0b]"></div><span className="text-[9px] text-text-secondary">ACTIVE</span></div>
-           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[9px] text-text-secondary">START</span></div>
+    <div className="flex-1 relative overflow-hidden flex flex-col min-h-0 min-w-0" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
+      <div className="p-3 flex justify-between items-center z-10 relative pointer-events-none shrink-0 border-b border-border-main min-w-0 overflow-x-auto no-scrollbar gap-4" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
+         <span className="text-[10px] font-bold text-primary-base/50 tracking-widest uppercase italic font-sans shrink-0 whitespace-nowrap">Visual State Diagram v0.1</span>
+         <div className="flex gap-4 font-sans pointer-events-auto items-center shrink-0">
+           <button 
+             onClick={() => setAutoFit(!autoFit)}
+             className={`text-[9px] font-bold px-2 py-0.5 rounded transition-colors ${autoFit ? 'bg-primary-dark border border-primary-base text-text-primary' : 'bg-bg-element hover:bg-border-active text-text-secondary border border-transparent'}`}
+           >
+             AUTO-FIT : {autoFit ? 'ON' : 'OFF'}
+           </button>
+           <button 
+             onClick={() => fitView({ padding: 0.2, duration: 800 })}
+             className="text-[9px] font-bold bg-bg-element hover:bg-border-active text-text-primary px-2 py-0.5 rounded transition-colors border border-transparent"
+           >
+             ZOOM TO FIT
+           </button>
+           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-primary-base shadow-[0_0_5px_var(--color-primary-base)]"></div><span className="text-[9px] text-text-secondary">ACTIVE</span></div>
+           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#3b82f6]"></div><span className="text-[9px] text-text-secondary">START</span></div>
          </div>
       </div>
-      <div className="flex-1 w-full h-full">
+      <div className="flex-1 w-full h-full min-h-0 min-w-0 relative">
         <ReactFlow 
           nodes={nodes} 
           edges={edges}
@@ -144,7 +176,7 @@ const StateDiagramInternal: React.FC = () => {
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={16} size={1} color="var(--color-border-main)" />
-          <Controls />
+          <Controls showInteractive={false} />
         </ReactFlow>
       </div>
     </div>

@@ -33,4 +33,7 @@ export interface TMStatistics {
   tapeMovements: { R: number; L: number; S: number };
   symbolsWritten: number;
   uniqueStatesVisited: number;
+  sessionStartTimeMs: number;
+  totalTimeMs: number;
+  memoryUsage: number;
 }

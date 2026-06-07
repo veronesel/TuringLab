@@ -27,7 +27,7 @@ export const Tape: React.FC = () => {
   // Auto-scroll effect or layout shifting is handled by the sliding track
   
   return (
-    <div className="flex-1 flex flex-col relative select-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:20px_20px]">
+    <div className="flex-1 flex flex-col relative select-none overflow-hidden" style={{ backgroundImage: 'radial-gradient(var(--color-border-main) 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
       <div className="absolute inset-0 bg-bg-base/90"></div>
 
       <div className="w-full flex justify-between items-center px-4 py-3 relative z-10">
@@ -47,6 +47,30 @@ export const Tape: React.FC = () => {
           title="Scrub through history"
         />
       </div>
+
+      <AnimatePresence>
+        {(status === 'accepted' || status === 'error' || status === 'rejected') && (
+          <motion.div
+             initial={{ opacity: 0, y: -10 }}
+             animate={{ opacity: 1, y: 0 }}
+             exit={{ opacity: 0, y: -10 }}
+             className="absolute left-6 top-12 z-50 pointer-events-none"
+          >
+             {status === 'accepted' && (
+               <div className="bg-green-500/20 border border-green-500/50 text-green-600 dark:text-green-400 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded shadow-lg flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                 Simulation Accepted
+               </div>
+             )}
+             {(status === 'rejected' || status === 'error') && (
+               <div className="bg-red-500/20 border border-red-500/50 text-red-600 dark:text-red-400 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded shadow-lg flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                 {status === 'rejected' ? 'Simulation Rejected' : 'Simulation Error'}
+               </div>
+             )}
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* Tape Track */}
       <div className="w-full flex justify-center items-center flex-1 mt-6 relative z-20">
@@ -74,6 +98,7 @@ export const Tape: React.FC = () => {
                       "w-[52px] h-16 flex items-center justify-center font-mono text-2xl transition-all duration-300",
                       {
                         "bg-bg-element border-2 border-primary-base text-primary-base shadow-[0_0_25px_var(--color-primary-base)] ring-4 ring-primary-base/20 relative z-20 scale-110 rounded-lg": isHead,
+                        "animate-pulse": isHead && isRunning,
                         "bg-bg-panel border border-border-main text-text-faint rounded": !isHead && cell.value === '_',
                         "bg-bg-element border border-border-active text-primary-base rounded": !isHead && cell.value !== '_'
                       }
