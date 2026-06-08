@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTMStore } from './store/tmStore';
 import { useScenariosStore } from './store/scenariosStore';
 import { presetScenarios } from './data/scenarios';
@@ -8,7 +8,9 @@ import { Controls } from './components/turing/Controls';
 import { Statistics, Debugger } from './components/turing/Statistics';
 import { ScenarioLibrary } from './components/turing/ScenarioLibrary';
 import { RuleEditor } from './components/turing/RuleEditor';
+import { PerformanceOverlay } from './components/turing/PerformanceOverlay';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+
 import { ShortcutsModal } from './components/turing/ShortcutsModal';
 import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
@@ -41,8 +43,27 @@ export default function App() {
   
   const [activeLayoutId, setActiveLayoutId] = useState('turing-layout-custom');
   const [layoutResetKey, setLayoutResetKey] = useState(0);
+  
+  const sidebarPanelRef = useRef<any>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => {
+      const panel = sidebarPanelRef.current;
+      if (panel) {
+        if (panel.isCollapsed()) {
+          panel.expand();
+        } else {
+          panel.collapse();
+        }
+      }
+    };
+    window.addEventListener('toggle-sidebar', handleToggle);
+    return () => window.removeEventListener('toggle-sidebar', handleToggle);
+  }, []);
 
   const resetLayout = () => {
+
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -133,6 +154,7 @@ export default function App() {
 
   return (
     <div className="h-screen w-full bg-bg-base text-text-primary flex flex-col font-sans select-none overflow-hidden relative">
+      <PerformanceOverlay />
       
       {/* Explain Logic Dialog Overlay */}
       {isExplaining || explanation ? (
@@ -286,8 +308,30 @@ export default function App() {
           >
             
             {/* Left Sidebar */}
-            <Panel defaultSize={20} minSize={10} className="min-h-0 min-w-0 flex flex-col">
-              <div data-tour="library" className="w-full h-full z-10 block border-r border-border-main min-h-0 min-w-0"><ScenarioLibrary /></div>
+            <Panel 
+              panelRef={sidebarPanelRef}
+              defaultSize={20} 
+              minSize={15} 
+              collapsible={true}
+              collapsedSize={4}
+              onResize={() => {
+                const isCollapsed = sidebarPanelRef.current?.isCollapsed();
+                setIsSidebarCollapsed(isCollapsed || false);
+              }}
+              className="min-h-0 min-w-0 flex flex-col"
+            >
+              <div data-tour="library" className="w-full h-full z-10 block border-r border-border-main min-h-0 min-w-0">
+                <ScenarioLibrary 
+                  isCollapsed={isSidebarCollapsed}
+                  onToggleCollapse={() => {
+                    const panel = sidebarPanelRef.current;
+                    if (panel) {
+                      if (panel.isCollapsed()) panel.expand();
+                      else panel.collapse();
+                    }
+                  }}
+                />
+              </div>
             </Panel>
 
             {renderHandle('horizontal')}

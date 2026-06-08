@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect } from 'react';
-import { ReactFlow, Controls, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider } from '@xyflow/react';
+import { ReactFlow, Controls, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges } from '@xyflow/react';
+import { Save, ChevronDown, Trash2 } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
 import { useTMStore } from '../../store/tmStore';
 
@@ -11,6 +12,12 @@ const StateDiagramInternal: React.FC = () => {
   const status = useTMStore(state => state.status);
   const { fitView } = useReactFlow();
   const [autoFit, setAutoFit] = React.useState(true);
+  const [showCheckpoints, setShowCheckpoints] = React.useState(false);
+
+  const addDiagramCheckpoint = useTMStore(state => state.addDiagramCheckpoint);
+  const removeDiagramCheckpoint = useTMStore(state => state.removeDiagramCheckpoint);
+  const diagramCheckpoints = useTMStore(state => state.diagramCheckpoints);
+  const jumpToStep = useTMStore(state => state.jumpToStep);
 
   const { nodes, edges } = useMemo(() => {
     const states = new Set<string>();
@@ -23,6 +30,36 @@ const StateDiagramInternal: React.FC = () => {
       states.add(r.nextState);
     });
 
+    const reachableStates = new Set<string>();
+    const outgoingRules = new Map<string, any[]>();
+    rules.forEach(r => {
+      if (!outgoingRules.has(r.currentState)) outgoingRules.set(r.currentState, []);
+      outgoingRules.get(r.currentState)!.push(r);
+    });
+
+    if (activeScenario) {
+      const toVisit = [activeScenario.initialState];
+      reachableStates.add(activeScenario.initialState);
+      while(toVisit.length > 0) {
+        const curr = toVisit.pop()!;
+        const transitions = outgoingRules.get(curr) || [];
+        transitions.forEach(t => {
+           if (!reachableStates.has(t.nextState)) {
+             reachableStates.add(t.nextState);
+             toVisit.push(t.nextState);
+           }
+        });
+      }
+    }
+
+    const stuckStates = new Set<string>();
+    states.forEach(stateName => {
+       const isAccept = activeScenario?.acceptStates.includes(stateName);
+       if (!isAccept && !outgoingRules.has(stateName)) {
+          stuckStates.add(stateName);
+       }
+    });
+
     const statesArr = Array.from(states);
     const radius = Math.max(150, statesArr.length * 40);
     const centerX = 250;
@@ -30,26 +67,43 @@ const StateDiagramInternal: React.FC = () => {
 
     const newNodes: Node[] = statesArr.map((stateName, index) => {
       const angle = (index / statesArr.length) * 2 * Math.PI;
-      const x = centerX + radius * Math.cos(angle);
-      const y = centerY + radius * Math.sin(angle);
+      
+      let x = centerX + radius * Math.cos(angle);
+      let y = centerY + radius * Math.sin(angle);
+
+      if (activeScenario?.customPositions && activeScenario.customPositions[stateName]) {
+         x = activeScenario.customPositions[stateName].x;
+         y = activeScenario.customPositions[stateName].y;
+      }
       
       const isAccept = activeScenario?.acceptStates.includes(stateName);
       const isStart = activeScenario?.initialState === stateName;
       const isActive = stateName === currentState;
+      const isUnreachable = activeScenario && !reachableStates.has(stateName);
+      const isStuck = stuckStates.has(stateName);
 
       let bgColor = isActive ? 'var(--color-primary-base)' : 'var(--color-diagram-node)';
       if (status === 'error' && isActive) bgColor = '#ef4444';
       if (status === 'rejected' && isActive) bgColor = '#f97316';
 
+      let borderColor = isAccept ? '#22c55e' : (isStart ? '#3b82f6' : 'var(--color-border-main)');
+      let borderStyle = isAccept ? '4px double' : '2px solid';
+
+      if (isUnreachable || isStuck) {
+         borderColor = '#ef4444';
+         if (!isActive) bgColor = '#450a0a';
+      }
+
       const baseNode = {
         id: stateName,
         position: { x, y },
         data: { label: stateName },
+        draggable: true,
         style: {
           background: bgColor,
-          color: isActive ? 'var(--color-bg-base)' : 'var(--color-text-primary)',
-          border: isAccept ? '4px double' : '2px solid',
-          borderColor: isAccept ? '#22c55e' : (isStart ? '#3b82f6' : 'var(--color-border-main)'),
+          color: isActive ? 'var(--color-bg-base)' : (isUnreachable || isStuck ? '#fca5a5' : 'var(--color-text-primary)'),
+          border: borderStyle,
+          borderColor: borderColor,
           borderRadius: isAccept ? '50%' : '12px',
           width: isAccept ? 45 : 70,
           height: isAccept ? 45 : 45,
@@ -58,7 +112,7 @@ const StateDiagramInternal: React.FC = () => {
           alignItems: 'center',
           fontWeight: 'bold',
           transition: 'all 0.3s ease',
-          boxShadow: isActive ? '0 0 15px var(--color-primary-base)' : 'none',
+          boxShadow: isActive ? '0 0 15px var(--color-primary-base)' : (isUnreachable || isStuck ? '0 0 10px rgba(239, 68, 68, 0.4)' : 'none'),
           fontFamily: 'sans-serif',
           fontSize: '12px'
         }
@@ -68,11 +122,19 @@ const StateDiagramInternal: React.FC = () => {
     });
 
     if (activeScenario) {
+      let startX = centerX + radius - 100;
+      let startY = centerY - 100;
+      if (activeScenario.customPositions && activeScenario.customPositions['__start__']) {
+         startX = activeScenario.customPositions['__start__'].x;
+         startY = activeScenario.customPositions['__start__'].y;
+      }
+
       newNodes.push({
         id: '__start__',
         type: 'default',
-        position: { x: centerX + radius - 100, y: centerY - 100 }, // Placed near initial state (would ideally compute it)
+        position: { x: startX, y: startY },
         data: { label: '' },
+        draggable: true,
         style: {
           background: 'var(--color-text-primary)',
           border: 'none',
@@ -129,6 +191,17 @@ const StateDiagramInternal: React.FC = () => {
     }
   }), [autoFit, fitView]);
 
+  const [liveNodes, setLiveNodes] = React.useState<Node[]>(nodes);
+  
+  useEffect(() => {
+    setLiveNodes(nodes);
+  }, [nodes]);
+
+  const onNodesChange = React.useCallback(
+    (changes: NodeChange<Node>[]) => setLiveNodes((nds) => applyNodeChanges(changes, nds)),
+    [setLiveNodes]
+  );
+  
   useEffect(() => {
     const rfEl = document.querySelector('.react-flow');
     if (rfEl) {
@@ -145,6 +218,12 @@ const StateDiagramInternal: React.FC = () => {
       }, 100);
     }
   }, [activeScenario, autoFit, fitView]);
+
+  const updateScenarioPositions = useTMStore(state => state.updateScenarioPositions);
+
+  const handleNodeDragStop = (event: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent, node: Node, newNodes: Node[]) => {
+    updateScenarioPositions({ [node.id]: node.position });
+  };
 
   return (
     <div className="flex-1 relative overflow-hidden flex flex-col min-h-0 min-w-0" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
@@ -163,14 +242,66 @@ const StateDiagramInternal: React.FC = () => {
            >
              ZOOM TO FIT
            </button>
+           
+           {/* Checkpoint Dropdown */}
+           <div className="relative">
+             <div className="flex bg-bg-element rounded border border-border-main text-[9px] font-bold">
+                <button 
+                  onClick={() => {
+                     const name = window.prompt("Save checkpoint name:", `Step ${useTMStore.getState().historyIndex}`);
+                     if (name) addDiagramCheckpoint(name);
+                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 hover:bg-border-active text-primary-base transition-colors border-r border-border-main"
+                  title="Save current state as Checkpoint"
+                >
+                  <Save size={10} /> SAVE
+                </button>
+                <button 
+                  onClick={() => setShowCheckpoints(!showCheckpoints)}
+                  className="px-1 py-0.5 hover:bg-border-active transition-colors flex items-center justify-center text-text-primary"
+                >
+                  {diagramCheckpoints.length} <ChevronDown size={10} className="ml-0.5"/>
+                </button>
+             </div>
+             
+             {showCheckpoints && (
+               <div className="absolute top-full right-0 mt-1 w-48 bg-bg-panel border border-border-main rounded shadow-xl overflow-hidden z-50">
+                 <div className="p-2 border-b border-border-main text-[10px] font-bold text-text-muted">SAVED CHECKPOINTS</div>
+                 <div className="max-h-48 overflow-y-auto no-scrollbar">
+                   {diagramCheckpoints.length === 0 ? (
+                     <div className="p-3 text-[10px] text-text-faint text-center">No checkpoints saved.</div>
+                   ) : (
+                     diagramCheckpoints.map(cp => (
+                       <div key={cp.id} className="flex items-center justify-between p-2 hover:bg-bg-element border-b border-border-main/50 last:border-0 group cursor-pointer" onClick={() => { jumpToStep(cp.stepNumber); setShowCheckpoints(false); }}>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-[10px] text-text-primary truncate font-bold">{cp.name}</span>
+                            <span className="text-[9px] text-text-muted font-mono">Step: {cp.stepNumber}</span>
+                          </div>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); removeDiagramCheckpoint(cp.id); }}
+                            className="text-text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                       </div>
+                     ))
+                   )}
+                 </div>
+               </div>
+             )}
+           </div>
+
            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-primary-base shadow-[0_0_5px_var(--color-primary-base)]"></div><span className="text-[9px] text-text-secondary">ACTIVE</span></div>
            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#3b82f6]"></div><span className="text-[9px] text-text-secondary">START</span></div>
+           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ef4444]"></div><span className="text-[9px] text-red-400">UNREACHABLE/STUCK</span></div>
          </div>
       </div>
       <div className="flex-1 w-full h-full min-h-0 min-w-0 relative">
         <ReactFlow 
-          nodes={nodes} 
+          nodes={liveNodes} 
           edges={edges}
+          onNodesChange={onNodesChange}
+          onNodeDragStop={handleNodeDragStop}
           fitView
           attributionPosition="bottom-right"
           proOptions={{ hideAttribution: true }}

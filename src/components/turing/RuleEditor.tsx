@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { TMRule, Direction } from '../../types/tm';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save } from 'lucide-react';
+import { Plus, Trash2, Save, Wand2 } from 'lucide-react';
 
 export const RuleEditor: React.FC = () => {
   const rules = useTMStore(state => state.rules);
@@ -36,6 +36,23 @@ export const RuleEditor: React.FC = () => {
     setLocalRules(prev => prev.filter(r => r.id !== id));
   };
 
+  const autoFormatRules = () => {
+    setLocalRules(prev => {
+      return [...prev].map(r => ({
+        ...r,
+        currentState: r.currentState.trim(),
+        readSymbol: r.readSymbol.trim() || '_',
+        nextState: r.nextState.trim(),
+        writeSymbol: r.writeSymbol.trim() || '_',
+      })).sort((a, b) => {
+        if (a.currentState === b.currentState) {
+          return a.readSymbol.localeCompare(b.readSymbol);
+        }
+        return a.currentState.localeCompare(b.currentState);
+      });
+    });
+  };
+
   const saveRules = () => {
     setRules(localRules);
   };
@@ -47,6 +64,14 @@ export const RuleEditor: React.FC = () => {
       <div className="p-3 bg-bg-panel border-b border-border-main flex justify-between items-center shrink-0 min-w-0 overflow-x-auto no-scrollbar gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted font-sans shrink-0">Instructions / Rules</span>
         <div className="flex gap-2 font-sans shrink-0">
+          <button 
+            onClick={autoFormatRules} 
+            disabled={isRunning} 
+            className="px-2 py-0.5 text-primary-base text-[9px] border border-primary-base/30 rounded hover:bg-primary-base/10 disabled:opacity-50 transition-colors flex items-center gap-1"
+            title="Auto-format and sort rules"
+          >
+            <Wand2 size={10} /> Format
+          </button>
           <button 
             onClick={addRule} 
             disabled={isRunning} 

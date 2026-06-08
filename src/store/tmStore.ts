@@ -19,6 +19,10 @@ export interface TMState {
   errorMessage: string | null;
   executionSpeed: number;
   
+  // Custom Data
+  bookmarks: Record<number, string>; // cellIndex -> bookmark text
+  diagramCheckpoints: { id: string; name: string; stepNumber: number; }[];
+
   // History & Debugging
   history: TMHistoryEntry[];
   historyIndex: number;
@@ -30,7 +34,12 @@ export interface TMState {
   loadScenario: (scenario: TMScenario) => void;
   setRules: (rules: TMRule[]) => void;
   updateTapeSymbol: (index: number, symbol: string) => void;
+  injectTapePattern: (pattern: string) => void;
   updateHeadPosition: (position: number) => void;
+  addBookmark: (index: number, text: string) => void;
+  removeBookmark: (index: number) => void;
+  addDiagramCheckpoint: (name: string) => void;
+  removeDiagramCheckpoint: (id: string) => void;
   stepForward: () => void;
   stepBackward: () => void;
   undo: () => void;
@@ -40,6 +49,7 @@ export interface TMState {
   run: () => void;
   pause: () => void;
   setExecutionSpeed: (speed: number) => void;
+  updateScenarioPositions: (positions: Record<string, { x: number; y: number }>) => void;
 }
 
 const initialStatistics: TMStatistics = {
@@ -71,6 +81,8 @@ export const useTMStore = create<TMState>()(
       historyIndex: 0,
       stepCount: 0,
       visitedStates: new Set(),
+      bookmarks: {},
+      diagramCheckpoints: [],
       statistics: { ...initialStatistics },
 
       loadScenario: (scenario) => {
@@ -116,7 +128,38 @@ export const useTMStore = create<TMState>()(
         tape: { ...state.tape, [index]: symbol }
       })),
 
+      injectTapePattern: (pattern) => set((state) => {
+        const newTape = { ...state.tape };
+        let currentIndex = state.headPosition;
+        for (let i = 0; i < pattern.length; i++) {
+          newTape[currentIndex] = pattern[i] === ' ' ? '_' : pattern[i];
+          currentIndex++;
+        }
+        return { tape: newTape };
+      }),
+
       updateHeadPosition: (position) => set({ headPosition: position }),
+
+      addBookmark: (index, text) => set((state) => ({
+        bookmarks: { ...state.bookmarks, [index]: text }
+      })),
+      
+      removeBookmark: (index) => set((state) => {
+        const { [index]: _, ...rest } = state.bookmarks;
+        return { bookmarks: rest };
+      }),
+
+      addDiagramCheckpoint: (name) => set((state) => ({
+        diagramCheckpoints: [...state.diagramCheckpoints, {
+             id: `cp-${Date.now()}`,
+             name,
+             stepNumber: state.historyIndex
+        }]
+      })),
+
+      removeDiagramCheckpoint: (id) => set((state) => ({
+        diagramCheckpoints: state.diagramCheckpoints.filter(cp => cp.id !== id)
+      })),
 
       stepForward: () => {
         const { tape, headPosition, currentState, rules, activeScenario, history, historyIndex, stepCount, statistics, visitedStates, status } = get();
@@ -268,7 +311,18 @@ export const useTMStore = create<TMState>()(
          set({ isRunning: true, isPaused: false });
       },
       pause: () => set({ isRunning: false, isPaused: true }),
-      setExecutionSpeed: (speed) => set({ executionSpeed: speed })
+      setExecutionSpeed: (speed) => set({ executionSpeed: speed }),
+      updateScenarioPositions: (positions) => set((state) => {
+        if (!state.activeScenario) return state;
+        const newScenario = { ...state.activeScenario, customPositions: { ...state.activeScenario.customPositions, ...positions } };
+        
+        // Also update in scenariosStore if it exists
+        if (state.activeScenario) {
+            useScenariosStore.getState().updateScenario(newScenario);
+        }
+
+        return { activeScenario: newScenario };
+      })
     }),
     {
       name: 'turing-machine-state',
@@ -284,7 +338,9 @@ export const useTMStore = create<TMState>()(
         stepCount: state.stepCount,
         visitedStates: Array.from(state.visitedStates),
         status: state.status,
-        statistics: state.statistics
+        statistics: state.statistics,
+        bookmarks: state.bookmarks,
+        diagramCheckpoints: state.diagramCheckpoints
       }),
       merge: (persistedState: any, currentState) => {
         return {

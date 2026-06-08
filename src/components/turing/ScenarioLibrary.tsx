@@ -15,14 +15,18 @@ import {
   ChevronDown,
   Download,
   Upload,
-  Search
+  Search,
+  Save
 } from "lucide-react";
 
-export const ScenarioLibrary: React.FC = () => {
+export const ScenarioLibrary: React.FC<{
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+}> = ({ isCollapsed, onToggleCollapse }) => {
   const loadScenario = useTMStore((state) => state.loadScenario);
   const activeInstanceDetails = useTMStore((state) => state.activeScenario);
 
-  const { activeScenarios, scenarioProgress, addActiveScenario, removeActiveScenario, clearActiveScenarios } =
+  const { activeScenarios, customScenarios, scenarioProgress, addActiveScenario, removeActiveScenario, clearActiveScenarios, addCustomScenario } =
     useScenariosStore();
 
   const [prompt, setPrompt] = useState("");
@@ -30,21 +34,24 @@ export const ScenarioLibrary: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<"library" | "active">("library");
+  const [activeCategory, setActiveCategory] = useState<string>("All");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  React.useEffect(() => {
-    const handleToggle = () => setIsCollapsed(c => !c);
-    window.addEventListener('toggle-sidebar', handleToggle);
-    return () => window.removeEventListener('toggle-sidebar', handleToggle);
-  }, []);
+  const allLibraryScenarios = [
+    ...presetScenarios,
+    ...customScenarios.map(sc => ({ ...sc, category: sc.category || "Custom" }))
+  ];
 
-  const filteredPresets = presetScenarios.filter((sc) =>
-    sc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    sc.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const categories = ["All", ...Array.from(new Set(allLibraryScenarios.map(sc => sc.category || "Uncategorized"))).sort()];
+
+  const filteredPresets = allLibraryScenarios.filter((sc) => {
+    const matchesSearch = sc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      sc.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = activeCategory === "All" || (sc.category || "Uncategorized") === activeCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   const handleExport = () => {
     if (!activeInstanceDetails) {
@@ -80,6 +87,44 @@ export const ScenarioLibrary: React.FC = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleSaveAsCustom = () => {
+    if (!activeInstanceDetails) {
+      alert("No active scenario to save.");
+      return;
+    }
+    const name = window.prompt("Enter name for custom scenario:", `Custom: ${activeInstanceDetails.name}`);
+    if (!name) return;
+
+    const currentRules = useTMStore.getState().rules;
+    const currentTapeDict = useTMStore.getState().tape;
+    const currentPositions = activeInstanceDetails.customPositions;
+    let initialTapeStr = activeInstanceDetails.initialTape;
+    
+    if (currentTapeDict) {
+      const indices = Object.keys(currentTapeDict).map(Number);
+      if (indices.length > 0) {
+         const min = Math.min(...indices);
+         const max = Math.max(...indices);
+         let t = "";
+         for(let i=min; i<=max; i++) t += currentTapeDict[i] || '_';
+         initialTapeStr = t;
+      }
+    }
+
+    const newCustomScenario: TMScenario = {
+      ...activeInstanceDetails,
+      id: `custom-${Date.now()}`,
+      name,
+      category: "Custom",
+      rules: currentRules,
+      initialTape: initialTapeStr,
+      customPositions: currentPositions,
+    };
+    
+    addCustomScenario(newCustomScenario);
+    alert(`Saved custom scenario: ${name}`);
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -142,7 +187,7 @@ export const ScenarioLibrary: React.FC = () => {
     return (
       <aside className="w-full border-r border-border-main bg-bg-surface flex flex-col items-center shrink-0 h-full py-4 relative z-20 overflow-hidden">
         <button
-          onClick={() => setIsCollapsed(false)}
+          onClick={onToggleCollapse}
           className="p-1.5 hover:bg-bg-element rounded-md text-text-secondary transition-colors absolute top-3 right-1.5"
           title="Expand Sidebar"
         >
@@ -153,7 +198,7 @@ export const ScenarioLibrary: React.FC = () => {
             className="p-1.5 hover:bg-bg-element hover:text-text-primary rounded-md transition-colors"
             onClick={() => {
               setTab("library");
-              setIsCollapsed(false);
+              onToggleCollapse();
             }}
             title="Library"
           >
@@ -166,7 +211,7 @@ export const ScenarioLibrary: React.FC = () => {
             className="p-1.5 hover:bg-bg-element hover:text-text-primary rounded-md transition-colors"
             onClick={() => {
               setTab("active");
-              setIsCollapsed(false);
+              onToggleCollapse();
             }}
             title="Active Scenarios"
           >
@@ -183,7 +228,7 @@ export const ScenarioLibrary: React.FC = () => {
   return (
     <aside className="w-full border-r border-border-main bg-bg-surface flex flex-col shrink-0 h-full relative z-20">
       <button
-        onClick={() => setIsCollapsed(true)}
+        onClick={onToggleCollapse}
         className="absolute top-3 right-2 p-1 text-text-secondary hover:bg-bg-element hover:text-text-primary rounded z-10"
         title="Collapse Sidebar"
       >
@@ -224,6 +269,17 @@ export const ScenarioLibrary: React.FC = () => {
                   className="w-full bg-bg-surface border border-border-main rounded pl-7 pr-2 py-1.5 text-[10px] outline-none focus:border-primary-base text-text-primary"
                 />
               </div>
+              <div className="flex gap-1.5 mt-2 overflow-x-auto no-scrollbar pb-1">
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`whitespace-nowrap px-2 py-0.5 text-[10px] rounded-full border transition-colors ${activeCategory === cat ? "bg-primary-base text-white border-primary-base" : "bg-bg-element text-text-secondary border-border-main hover:border-text-muted"}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-1 space-y-0.5">
               {filteredPresets.length === 0 ? (
@@ -234,7 +290,8 @@ export const ScenarioLibrary: React.FC = () => {
                 filteredPresets.map((sc) => (
                   <div
                     key={sc.id}
-                    className="border border-transparent hover:border-border-active hover:bg-bg-element/50 rounded transition-colors overflow-hidden"
+                    className="border border-transparent hover:border-border-active hover:bg-bg-element/50 rounded transition-colors overflow-hidden group"
+                    title={`Objective: ${sc.description}\n\nInitial Tape: ${sc.initialTape}`}
                   >
                     <button
                       onClick={() =>
@@ -272,19 +329,28 @@ export const ScenarioLibrary: React.FC = () => {
 
         {tab === "active" && (
           <div className="flex flex-col h-full">
-            <div className="p-2 border-b border-border-main shrink-0 flex gap-2">
+            <div className="p-2 border-b border-border-main shrink-0 flex flex-col gap-2">
               <button
-                onClick={handleExport}
-                className="flex-1 flex justify-center items-center gap-1 text-[10px] font-bold py-1 bg-bg-element hover:bg-border-active text-text-primary rounded transition-colors"
+                onClick={handleSaveAsCustom}
+                className="w-full flex justify-center items-center gap-1.5 text-[10px] font-bold py-1.5 bg-primary-base/10 hover:bg-primary-base/20 text-primary-base border border-primary-base/30 hover:border-primary-base/50 rounded transition-colors"
+                title="Save current state as custom layout in Library"
               >
-                <Download size={12} /> EXPORT
+                <Save size={12} /> SAVE TO LIBRARY
               </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex-1 flex justify-center items-center gap-1 text-[10px] font-bold py-1 bg-bg-element hover:bg-border-active text-text-primary rounded transition-colors"
-              >
-                <Upload size={12} /> IMPORT
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleExport}
+                  className="flex-1 flex justify-center items-center gap-1 text-[10px] font-bold py-1 bg-bg-element hover:bg-border-active text-text-primary rounded transition-colors"
+                >
+                  <Download size={12} /> EXPORT
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 flex justify-center items-center gap-1 text-[10px] font-bold py-1 bg-bg-element hover:bg-border-active text-text-primary rounded transition-colors"
+                >
+                  <Upload size={12} /> IMPORT
+                </button>
+              </div>
               <input
                 type="file"
                 accept=".json"

@@ -18,6 +18,8 @@ export interface TMScenario {
   initialState: string;
   acceptStates: string[];
   rules: TMRule[];
+  customPositions?: Record<string, { x: number; y: number }>;
+  category?: string;
 }
 
 export interface TMHistoryEntry {
