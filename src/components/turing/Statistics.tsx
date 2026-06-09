@@ -79,6 +79,10 @@ export const Statistics: React.FC = () => {
           <div className="text-lg font-mono font-bold text-text-secondary truncate">{statistics.symbolsWritten}</div>
         </div>
         <div className="bg-bg-surface p-2 rounded border border-border-active min-w-0 overflow-hidden">
+          <div className="text-[9px] text-text-muted truncate">Tape Shifts</div>
+          <div className="text-lg font-mono font-bold text-text-secondary truncate">{statistics.tapeMovements.R + statistics.tapeMovements.L}</div>
+        </div>
+        <div className="bg-bg-surface p-2 rounded border border-border-active min-w-0 overflow-hidden">
           <div className="text-[9px] text-text-muted truncate">Unique States</div>
           <div className="text-lg font-mono font-bold text-text-secondary truncate">{statistics.uniqueStatesVisited}</div>
         </div>

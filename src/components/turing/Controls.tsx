@@ -102,27 +102,22 @@ export const Controls: React.FC = () => {
         </div>
         <div className="h-4 w-px bg-[#2D333B]"></div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-text-muted font-mono whitespace-nowrap">STEP DELAY</span>
+          <span className="text-[10px] text-text-muted font-bold uppercase tracking-widest whitespace-nowrap">SIM SPEED</span>
           <input 
             type="range" 
-            min="10" 
-            max="2000" 
-            step="10" 
-            value={executionSpeed}
-            onChange={(e) => setExecutionSpeed(Number(e.target.value))}
-            className="w-16 h-1 bg-bg-element rounded-lg appearance-none cursor-pointer" 
+            min="1" 
+            max="100" 
+            step="1" 
+            value={Math.round(2000 / executionSpeed)}
+            onChange={(e) => {
+              const speedVal = Number(e.target.value);
+              setExecutionSpeed(Math.max(10, Math.round(2000 / speedVal)));
+            }}
+            className="w-24 h-1.5 bg-bg-panel border border-border-main rounded appearance-none cursor-pointer accent-primary-base focus:outline-none" 
+            title="Adjust Simulation Speed"
           />
-          <div className="flex items-center gap-1">
-            <input 
-              type="number"
-              min="10"
-              max="5000"
-              step="10"
-              value={executionSpeed}
-              onChange={(e) => setExecutionSpeed(Number(e.target.value))}
-              className="w-12 bg-bg-panel border border-border-main rounded px-1 py-0.5 text-xs font-mono text-text-primary text-center appearance-none outline-none focus:border-primary-base"
-            />
-            <span className="text-[10px] text-text-muted font-mono">ms</span>
+          <div className="flex items-center gap-1 w-12 justify-end">
+            <span className="text-[10px] text-primary-base font-mono font-bold">{Math.round(2000 / executionSpeed)}x</span>
           </div>
         </div>
       </div>

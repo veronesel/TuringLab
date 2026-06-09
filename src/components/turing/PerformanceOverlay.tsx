@@ -13,7 +13,7 @@ export const PerformanceOverlay: React.FC = () => {
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="absolute top-[60px] right-4 z-50 pointer-events-none"
+      className="absolute bottom-6 left-6 z-50 pointer-events-none"
     >
       <div className="bg-bg-panel/80 backdrop-blur border border-border-main rounded-lg shadow-lg p-3 flex items-center gap-4">
         <div className="flex items-center gap-2 text-primary-base">

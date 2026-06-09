@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { useTMStore } from './store/tmStore';
 import { useScenariosStore } from './store/scenariosStore';
 import { presetScenarios } from './data/scenarios';
@@ -12,7 +14,8 @@ import { PerformanceOverlay } from './components/turing/PerformanceOverlay';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
 import { ShortcutsModal } from './components/turing/ShortcutsModal';
-import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw } from 'lucide-react';
+import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
+import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
 import { useThemeStore, DARK_SCHEMAS, LIGHT_SCHEMAS } from './store/themeStore';
@@ -103,6 +106,157 @@ export default function App() {
   const run = useTMStore(state => state.run);
   const pause = useTMStore(state => state.pause);
   const resetMachine = useTMStore(state => state.resetMachine);
+  const importConfiguration = useTMStore(state => state.importConfiguration);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isAliasPanelOpen, setIsAliasPanelOpen] = useState(false);
+  const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(console.error);
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  const handleExportCSV = () => {
+    const history = useTMStore.getState().history;
+    const header = "Step,State,Read,Write,Direction,HeadPosition\n";
+    const rows = history.map((entry, index) => {
+      const prevEntry = index > 0 ? history[index - 1] : null;
+      let readSymbol = '_';
+      let writeSymbol = '_';
+      let moveDirection = 'S';
+      if (prevEntry) {
+         readSymbol = prevEntry.tape[prevEntry.headPosition] || '_';
+         writeSymbol = entry.tape[prevEntry.headPosition] || '_';
+         if (entry.headPosition > prevEntry.headPosition) moveDirection = 'R';
+         else if (entry.headPosition < prevEntry.headPosition) moveDirection = 'L';
+      }
+      return `${index},${entry.currentState},${readSymbol},${writeSymbol},${moveDirection},${entry.headPosition}`;
+    }).join("\n");
+    
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `turing-history-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyURL = () => {
+    try {
+      const state = useTMStore.getState();
+      const exportData = {
+        id: state.activeScenario?.id,
+        name: state.activeScenario?.name,
+        rules: state.rules,
+        symbols: state.symbolAliases,
+        tape: state.tape,
+        head: state.headPosition,
+      };
+      // For URL we should ideally compress it, but simple base64 works for small configs
+      const encoded = btoa(JSON.stringify(exportData));
+      const url = new URL(window.location.href);
+      url.searchParams.set('config', encoded);
+      navigator.clipboard.writeText(url.toString());
+      alert('Configuration URL copied to clipboard!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to copy configuration URL.');
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!containerRef.current) return;
+    try {
+      const canvas = await html2canvas(containerRef.current, { scale: 1 });
+      const imgData = canvas.toDataURL('image/jpeg', 0.8);
+      const pdf = new jsPDF('landscape', 'px', [canvas.width, canvas.height]);
+      pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+      pdf.save(`TuringLab-Report-${Date.now()}.pdf`);
+    } catch (e) {
+      console.error("PDF export failed", e);
+    }
+  };
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const state = useTMStore.getState();
+      const exportData = {
+        id: state.activeScenario?.id,
+        name: state.activeScenario?.name,
+        description: state.activeScenario?.description,
+        rules: state.rules,
+        tape: state.tape,
+        headPosition: state.headPosition,
+        currentState: state.currentState,
+        acceptStates: state.activeScenario?.acceptStates,
+        symbolAliases: state.symbolAliases,
+        bookmarks: state.bookmarks,
+        diagramCheckpoints: state.diagramCheckpoints
+      };
+      localStorage.setItem('tm-autosave', JSON.stringify({ timestamp: Date.now(), data: exportData }));
+      setLastAutoSave(new Date());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleExportConfig = () => {
+     const state = useTMStore.getState();
+     const exportData = {
+        id: state.activeScenario?.id,
+        name: state.activeScenario?.name,
+        description: state.activeScenario?.description,
+        rules: state.rules,
+        tape: state.tape,
+        headPosition: state.headPosition,
+        currentState: state.currentState,
+        acceptStates: state.activeScenario?.acceptStates,
+        symbolAliases: state.symbolAliases,
+        bookmarks: state.bookmarks,
+        diagramCheckpoints: state.diagramCheckpoints
+     };
+     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+     const url = URL.createObjectURL(blob);
+     const a = document.createElement('a');
+     a.href = url;
+     a.download = `tm-config-${Date.now()}.json`;
+     document.body.appendChild(a);
+     a.click();
+     document.body.removeChild(a);
+     URL.revokeObjectURL(url);
+  };
+
+  const handleImportConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const file = e.target.files?.[0];
+     if (!file) return;
+     const reader = new FileReader();
+     reader.onload = (event) => {
+        try {
+           const config = JSON.parse(event.target?.result as string);
+           importConfiguration(config);
+        } catch (err) {
+           console.error("Failed to parse configuration file", err);
+           alert("Invalid configuration file.");
+        }
+     };
+     reader.readAsText(file);
+     e.target.value = '';
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -127,6 +281,31 @@ export default function App() {
 
   useEffect(() => {
     if (!activeScenario) {
+      const params = new URLSearchParams(window.location.search);
+      const configData = params.get('config');
+      if (configData) {
+        try {
+          const decoded = JSON.parse(atob(configData));
+          if (decoded.rules && decoded.tape) {
+            useTMStore.getState().importConfiguration({
+              id: decoded.id || 'shared-config',
+              name: decoded.name || 'Shared Configuration',
+              description: 'Configuration loaded from URL',
+              rules: decoded.rules,
+              tape: decoded.tape,
+              headPosition: decoded.head || 0,
+              currentState: decoded.rules[0]?.currentState || 'q0',
+              acceptStates: [],
+              symbolAliases: decoded.symbols || {}
+            });
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+          }
+        } catch (e) {
+          console.error("Failed to load config from URL", e);
+        }
+      }
+
       const defaultSc = presetScenarios[0];
       addActiveScenario(defaultSc);
       loadScenario(defaultSc);
@@ -153,8 +332,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-full bg-bg-base text-text-primary flex flex-col font-sans select-none overflow-hidden relative">
-      <PerformanceOverlay />
+    <div ref={containerRef} className="h-screen w-full bg-bg-base text-text-primary flex flex-col font-sans select-none overflow-hidden relative">
       
       {/* Explain Logic Dialog Overlay */}
       {isExplaining || explanation ? (
@@ -205,6 +383,66 @@ export default function App() {
             <BrainCircuit size={12} /> EXPLAIN LOGIC
           </button>
           
+          <div className="flex bg-bg-surface border border-border-main rounded p-0.5 ml-2">
+            <input type="file" ref={fileInputRef} onChange={handleImportConfig} accept=".json" className="hidden" />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors"
+              title="Import Configuration"
+            >
+              <Upload size={14} />
+            </button>
+            <button 
+              onClick={handleExportConfig}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors"
+              title="Export Configuration"
+            >
+              <Download size={14} />
+            </button>
+            <button 
+              onClick={handleExportPDF}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors"
+              title="Export PDF Report"
+            >
+              <FileText size={14} />
+            </button>
+            <button 
+              onClick={handleExportCSV}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors"
+              title="Export History CSV"
+            >
+              <Table size={14} />
+            </button>
+            <button 
+              onClick={handleCopyURL}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors"
+              title="Copy Configuration URL"
+            >
+              <Link size={14} />
+            </button>
+            <button 
+              onClick={() => setIsAliasPanelOpen(true)}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors border-l border-border-main ml-1"
+              title="Symbol Aliases"
+            >
+              <Tags size={14} />
+            </button>
+            <button 
+              onClick={toggleFullscreen}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors border-l border-border-main ml-1"
+              title="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            </button>
+          </div>
+
+          <div className="flex bg-bg-surface border border-border-main rounded p-0.5 ml-2">
+            <div className="flex items-center pl-2 pr-1 text-text-muted" title={lastAutoSave ? `Last auto-saved: ${lastAutoSave.toLocaleTimeString()}` : "Auto-save active"}>
+              <CheckCircle2 size={12} className={lastAutoSave ? "text-green-500" : "text-text-faint"} />
+              <span className="text-[9px] font-bold ml-1 mr-2">{lastAutoSave ? "SAVED" : "UNSAVED"}</span>
+            </div>
+          </div>
+
           <div className="flex bg-bg-surface border border-border-main rounded p-0.5 ml-2">
             <div className="flex items-center pl-2 pr-1 text-text-muted">
               <LayoutDashboard size={12} />
@@ -416,6 +654,7 @@ export default function App() {
       </PanelGroup>
 
       <ShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
+      <SymbolAliasesPanel isOpen={isAliasPanelOpen} onClose={() => setIsAliasPanelOpen(false)} />
       <HelpSidebar />
     </div>
   );

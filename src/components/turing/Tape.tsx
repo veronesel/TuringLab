@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Undo, Redo, Wand2, X, Palette } from 'lucide-react';
+import { PatternGeneratorPanel } from './PatternGeneratorPanel';
 
 type TapeSkin = 'default' | 'typewriter' | 'dots' | 'binary';
 
@@ -21,10 +22,82 @@ export const Tape: React.FC = () => {
   const bookmarks = useTMStore(state => state.bookmarks);
   const addBookmark = useTMStore(state => state.addBookmark);
   const removeBookmark = useTMStore(state => state.removeBookmark);
+  const symbolAliases = useTMStore(state => state.symbolAliases);
+  const updateHeadPosition = useTMStore(state => state.updateHeadPosition);
   
+  // Bulk Editing State
+  const [hoveredCell, setHoveredCell] = useState<number | null>(null);
+  const [selectionStart, setSelectionStart] = useState<number | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
+  const updateTapeSymbol = useTMStore(state => state.updateTapeSymbol);
+  
+  const selectedIndices = (() => {
+      if (selectionStart === null || selectionEnd === null) return [];
+      const start = Math.min(selectionStart, selectionEnd);
+      const end = Math.max(selectionStart, selectionEnd);
+      const indices = [];
+      for(let i=start; i<=end; i++) indices.push(i);
+      return indices;
+  })();
+
+  const handlePointerDown = (index: number, e: React.PointerEvent) => {
+    if (e.button !== 0) return; // Only left click
+    setSelectionStart(index);
+    setSelectionEnd(index);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerEnter = (index: number) => {
+    setHoveredCell(index);
+    if (selectionStart !== null) {
+      setSelectionEnd(index);
+    }
+  };
+
+  const handlePointerUp = () => {
+    if (selectionStart !== null && selectionEnd !== null && selectionStart === selectionEnd) {
+      // Single click - clear selection so it doesn't stay blue, bookmark will be handled by onClick
+      clearSelection();
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      // If we want to catch mouse up outside
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
+  }, []);
+
+  const handleBulkInvert = () => {
+     let tempTape = { ...tape };
+     for(const idx of selectedIndices) {
+         let val = tempTape[idx] || '_';
+         if (val === '0') updateTapeSymbol(idx, '1');
+         else if (val === '1') updateTapeSymbol(idx, '0');
+     }
+     clearSelection();
+  };
+
+  const handleBulkFill = () => {
+     const val = window.prompt("Fill with symbol (max 1 char):", "0");
+     if (val !== null && val.length <= 1) {
+         for(const idx of selectedIndices) {
+            updateTapeSymbol(idx, val || '_');
+         }
+     }
+     clearSelection();
+  };
+
+  const clearSelection = () => {
+     setSelectionStart(null);
+     setSelectionEnd(null);
+  };
+
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleBookmarkToggle = (index: number) => {
+  const handleBookmarkToggle = (index: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (bookmarks[index] !== undefined) {
       removeBookmark(index);
     } else {
@@ -36,6 +109,7 @@ export const Tape: React.FC = () => {
   };
   const [showPatternDialog, setShowPatternDialog] = useState(false);
   const [customPattern, setCustomPattern] = useState("");
+  const [infiniteMode, setInfiniteMode] = useState(true);
   const [tapeSkin, setTapeSkin] = useState<TapeSkin>('default');
 
   const handleInjectPattern = (pattern: string) => {
@@ -44,14 +118,35 @@ export const Tape: React.FC = () => {
     setCustomPattern("");
   };
 
-  // Generate an array of cells around the head position
+  // Generate an array of cells
   const visibleRange = 15; // 15 cells left and right
-  const minCell = headPosition - visibleRange;
-  const maxCell = headPosition + visibleRange;
-  
   const cells = [];
-  for (let i = minCell; i <= maxCell; i++) {
-    cells.push({ index: i, value: tape[i] || '_' });
+  
+  if (infiniteMode) {
+    const minCell = headPosition - visibleRange;
+    const maxCell = headPosition + visibleRange;
+    for (let i = minCell; i <= maxCell; i++) {
+      cells.push({ index: i, value: tape[i] || '_' });
+    }
+  } else {
+    // Fixed tape mode: show from min bounded key to max bounded key or visible range
+    const keys = Object.keys(tape).map(Number).filter(n => !isNaN(n));
+    let startIdx = keys.length ? Math.min(...keys) : 0;
+    let endIdx = keys.length ? Math.max(...keys) : 0;
+    
+    // Ensure head is included
+    startIdx = Math.min(startIdx, headPosition);
+    endIdx = Math.max(endIdx, headPosition);
+    
+    // Ensure we show at least 10 cells even if fixed tape is small
+    const size = endIdx - startIdx + 1;
+    if (size < 10) {
+      endIdx = startIdx + 9;
+    }
+
+    for (let i = startIdx; i <= endIdx; i++) {
+       cells.push({ index: i, value: tape[i] || '_' });
+    }
   }
 
   // Auto-scroll effect or layout shifting is handled by the sliding track
@@ -68,6 +163,14 @@ export const Tape: React.FC = () => {
            </button>
            <button onClick={redo} disabled={historyIndex >= history.length - 1 || isRunning} className="p-1 rounded bg-bg-element hover:bg-border-active disabled:opacity-50 transition-colors" title="Redo Step">
              <Redo size={12} className="text-text-primary" />
+           </button>
+           
+           <div className="w-[1px] h-4 bg-border-main mx-1"></div>
+           <button 
+             onClick={() => setInfiniteMode(!infiniteMode)} 
+             className={clsx("px-2 py-1 rounded text-[10px] font-bold uppercase transition-colors border", infiniteMode ? "bg-primary-base/10 text-primary-base border-primary-base/30" : "bg-bg-element text-text-muted border-border-main")}
+           >
+             {infiniteMode ? 'Infinite Mode' : 'Fixed Tape'}
            </button>
          </div>
          <div className="flex items-center gap-3">
@@ -143,59 +246,41 @@ export const Tape: React.FC = () => {
           <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[10px] border-t-primary-base -mt-[1px]"></div>
         </div>
 
-        {/* Pattern Injection Dialog */}
+        {/* Pattern Generator Panel */}
+        <PatternGeneratorPanel isOpen={showPatternDialog} onClose={() => setShowPatternDialog(false)} />
+
+        {/* Bulk Edit Toolbar */}
         <AnimatePresence>
-          {showPatternDialog && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -20 }}
-              className="absolute top-10 left-1/2 -translate-x-1/2 z-50 bg-bg-panel border border-border-active rounded-lg shadow-2xl p-4 w-[280px]"
-            >
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-primary-base">Inject Pattern</h3>
-                <button onClick={() => setShowPatternDialog(false)} className="text-text-muted hover:text-text-primary transition-colors">
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="space-y-2 mb-4">
-                <button onClick={() => handleInjectPattern("01010101")} className="w-full text-left px-3 py-2 bg-bg-element hover:bg-border-active text-text-primary text-xs rounded border border-border-main hover:border-text-muted transition-colors font-mono">
-                  01010101 (Alternating)
-                </button>
-                <button onClick={() => handleInjectPattern("11111111")} className="w-full text-left px-3 py-2 bg-bg-element hover:bg-border-active text-text-primary text-xs rounded border border-border-main hover:border-text-muted transition-colors font-mono">
-                  11111111 (All 1s)
-                </button>
-                <button onClick={() => handleInjectPattern("00000000")} className="w-full text-left px-3 py-2 bg-bg-element hover:bg-border-active text-text-primary text-xs rounded border border-border-main hover:border-text-muted transition-colors font-mono">
-                  00000000 (All 0s)
-                </button>
-                <button onClick={() => {
-                  const noise = Array.from({length: 8}, () => Math.random() > 0.5 ? '1' : '0').join('');
-                  handleInjectPattern(noise);
-                }} className="w-full text-left px-3 py-2 bg-bg-element hover:bg-border-active text-text-primary text-xs rounded border border-border-main hover:border-text-muted transition-colors font-mono">
-                  Random Binary Noise
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={customPattern}
-                  onChange={(e) => setCustomPattern(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && customPattern.trim()) {
-                      handleInjectPattern(customPattern);
-                    }
-                  }}
-                  className="flex-1 bg-bg-surface border border-border-main rounded px-2 py-1.5 text-xs outline-none focus:border-primary-base text-text-primary font-mono placeholder:font-sans"
-                  placeholder="Custom..."
-                />
-                <button 
-                  onClick={() => customPattern.trim() && handleInjectPattern(customPattern)}
-                  className="px-3 py-1.5 bg-primary-base hover:bg-primary-hover text-bg-base text-xs font-bold rounded transition-colors"
-                >
-                  Inject
-                </button>
-              </div>
-            </motion.div>
+          {selectedIndices.length > 1 && (
+             <motion.div
+               initial={{ opacity: 0, y: 10, scale: 0.95 }}
+               animate={{ opacity: 1, y: 0, scale: 1 }}
+               exit={{ opacity: 0, y: 10, scale: 0.95 }}
+               className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 bg-bg-panel border border-[#3b82f6] rounded shadow-[0_0_20px_rgba(59,130,246,0.3)] p-2 flex items-center gap-3"
+             >
+               <span className="text-[10px] font-bold text-[#3b82f6] uppercase tracking-widest px-2 border-r border-border-main">
+                 {selectedIndices.length} CELLS
+               </span>
+               <button 
+                 onClick={handleBulkInvert}
+                 className="px-2 py-1 bg-bg-element hover:bg-border-active transition-colors text-[10px] font-bold text-text-primary rounded border border-border-main"
+               >
+                 INVERT BITS
+               </button>
+               <button 
+                 onClick={handleBulkFill}
+                 className="px-2 py-1 bg-bg-element hover:bg-border-active transition-colors text-[10px] font-bold text-text-primary rounded border border-border-main"
+               >
+                 FILL WITH...
+               </button>
+               <button 
+                 onClick={clearSelection}
+                 className="p-1 hover:text-red-400 text-text-muted transition-colors ml-1"
+                 title="Cancel Selection"
+               >
+                 <X size={14} />
+               </button>
+             </motion.div>
           )}
         </AnimatePresence>
 
@@ -206,13 +291,32 @@ export const Tape: React.FC = () => {
             animate={{ x: -(headPosition * 56) }} // 52px width + 4px gap = 56px per cell
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
           >
+           {/* Ghost Head Indicator */}
+           {hoveredCell !== null && hoveredCell !== headPosition && !isRunning && (
+             <div 
+               className="absolute top-[-30px] z-20 flex flex-col items-center pointer-events-none opacity-50 transition-all duration-75 -translate-x-1/2"
+               style={{ left: hoveredCell * 56 }}
+             >
+               <div className="text-[8px] font-mono font-bold text-text-muted mb-1 tracking-widest">EDIT</div>
+               <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-text-muted"></div>
+             </div>
+           )}
+
            {cells.map(cell => {
              const isHead = cell.index === headPosition;
              const isBookmarked = bookmarks[cell.index] !== undefined;
              const bookmarkNote = bookmarks[cell.index];
              
+             const isHovered = hoveredCell === cell.index && !isHead && !isRunning;
+             const isSelected = selectedIndices.includes(cell.index);
+
              let skinStyles = "font-mono text-2xl";
-             let content: React.ReactNode = cell.value === '_' ? 'B' : cell.value;
+             let content: React.ReactNode = cell.value === '_' ? (
+               <svg style={{width: '0.8em', height: '0.8em'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                 <path d="M6 18v-6 M18 18v-6 M6 18h12"/>
+               </svg>
+             ) : cell.value;
+             let aliasText = symbolAliases[cell.value === '_' ? '_' : cell.value];
              
              if (tapeSkin === 'typewriter') {
                  skinStyles = "font-serif text-3xl font-black bg-[#fdf6e3] text-[#2c1d11] border-[#d4c5b0] dark:bg-[#1a140b] dark:text-[#d4af37] dark:border-[#4d3a1f] shadow-inner";
@@ -231,22 +335,58 @@ export const Tape: React.FC = () => {
                  content = cell.value === '_' ? 'BLNK' : cell.value.charCodeAt(0).toString(2).padStart(8, '0').slice(-4);
              }
 
+             if (aliasText && tapeSkin === 'default') {
+                 skinStyles += " flex-col relative";
+                 content = (
+                    <>
+                       <div className="absolute top-1 text-[8px] uppercase tracking-widest text-text-muted font-sans font-bold opacity-70 group-hover:opacity-100 transition-opacity truncate w-[90%] text-center">
+                          {aliasText}
+                       </div>
+                       <div className="mt-2">{content}</div>
+                    </>
+                 );
+             }
+
              return (
                <div
                   key={cell.index}
                   style={{ position: 'absolute', left: cell.index * 56 - 26, top: 0 }}
                   className="w-[52px] h-16 flex items-center justify-center relative cursor-pointer group"
-                  onClick={() => handleBookmarkToggle(cell.index)}
+                  onPointerDown={(e) => handlePointerDown(cell.index, e)}
+                  onPointerEnter={() => handlePointerEnter(cell.index)}
+                  onPointerUp={handlePointerUp}
+                  onPointerLeave={() => setHoveredCell(null)}
+                  onClick={(e) => {
+                     if (selectedIndices.length <= 1) {
+                        handleBookmarkToggle(cell.index, e);
+                     }
+                  }}
+                  onDragOver={(e) => {
+                     e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                     const srcIdx = e.dataTransfer.getData('bookmarkCell');
+                     if (srcIdx) {
+                        const src = parseInt(srcIdx, 10);
+                        if (!isNaN(src) && src !== cell.index) {
+                           const note = bookmarks[src] || "";
+                           removeBookmark(src);
+                           addBookmark(cell.index, note);
+                        }
+                     }
+                  }}
                >
                  <div
                     className={twMerge(
                       clsx(
                         "w-full h-full flex items-center justify-center transition-all duration-300 pointer-events-none rounded",
                         {
-                          "border-2 border-primary-base text-primary-base shadow-[0_0_25px_var(--color-primary-base)] ring-4 ring-primary-base/20 relative z-20 scale-110 rounded-lg": isHead,
-                          "animate-pulse": isHead && isRunning,
+                          "border-2 border-primary-base text-primary-base shadow-[0_0_25px_var(--color-primary-base)] ring-4 ring-primary-base/20 relative z-20 scale-110 rounded-lg bg-primary-base/10": isHead,
+                          "animate-pulse saturate-150": isHead && isRunning,
                           "bg-bg-panel border border-border-main text-text-faint": !isHead && cell.value === '_' && tapeSkin === 'default',
-                          "bg-bg-element border border-border-active text-primary-base": !isHead && cell.value !== '_' && tapeSkin === 'default'
+                          "bg-bg-element border border-border-active text-primary-base": !isHead && cell.value !== '_' && tapeSkin === 'default',
+                          "opacity-80 ring-2 ring-primary-base/50 shadow-[0_0_15px_var(--color-primary-base)] z-10": isHovered,
+                          "ring-2 ring-blue-500 bg-blue-500/20 z-10": isSelected && !isHead
                         },
                         skinStyles
                       )
@@ -258,8 +398,18 @@ export const Tape: React.FC = () => {
                  {/* Bookmark Indicator */}
                  {isBookmarked && (
                    <div 
-                     className="absolute -bottom-4 w-2 h-2 rotate-45 bg-[#3b82f6] shadow-[0_0_5px_rgba(59,130,246,0.6)]" 
-                     title={bookmarkNote || 'Bookmarked'}
+                     draggable
+                     onDragStart={(e) => {
+                        e.dataTransfer.setData('bookmarkCell', cell.index.toString());
+                        e.stopPropagation();
+                     }}
+                     onClick={(e) => {
+                        e.stopPropagation();
+                        // Jump head to this bookmark
+                        updateHeadPosition(cell.index);
+                     }}
+                     className="absolute -bottom-4 w-3 h-3 rotate-45 bg-[#3b82f6] shadow-[0_0_5px_rgba(59,130,246,0.6)] cursor-grab active:cursor-grabbing hover:scale-125 transition-transform" 
+                     title={bookmarkNote ? `${bookmarkNote} (Click to jump head, Drag to move)` : 'Bookmarked (Click to jump head, Drag to move)'}
                    />
                  )}
                  {isBookmarked && bookmarkNote && (

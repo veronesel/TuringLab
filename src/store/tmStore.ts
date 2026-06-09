@@ -22,6 +22,7 @@ export interface TMState {
   // Custom Data
   bookmarks: Record<number, string>; // cellIndex -> bookmark text
   diagramCheckpoints: { id: string; name: string; stepNumber: number; }[];
+  symbolAliases: Record<string, string>;
 
   // History & Debugging
   history: TMHistoryEntry[];
@@ -32,6 +33,8 @@ export interface TMState {
 
   // Actions
   loadScenario: (scenario: TMScenario) => void;
+  importConfiguration: (config: any) => void;
+  setSymbolAliases: (aliases: Record<string, string>) => void;
   setRules: (rules: TMRule[]) => void;
   updateTapeSymbol: (index: number, symbol: string) => void;
   injectTapePattern: (pattern: string) => void;
@@ -83,7 +86,53 @@ export const useTMStore = create<TMState>()(
       visitedStates: new Set(),
       bookmarks: {},
       diagramCheckpoints: [],
+      symbolAliases: {},
       statistics: { ...initialStatistics },
+      
+      importConfiguration: (config) => {
+        set({
+           activeScenario: {
+              id: config.id || 'imported',
+              name: config.name || 'Imported Configuration',
+              description: config.description || '',
+              initialState: config.currentState || 'q0',
+              acceptStates: config.acceptStates || [],
+              initialTape: '',
+              initialHeadPosition: config.headPosition || 0,
+              rules: config.rules || []
+           },
+           rules: config.rules || [],
+           tape: config.tape || {},
+           headPosition: config.headPosition || 0,
+           currentState: config.currentState || 'q0',
+           status: 'idle',
+           isRunning: false,
+           isPaused: false,
+           lastRuleId: null,
+           errorMessage: null,
+           history: [{
+              tape: config.tape || {},
+              headPosition: config.headPosition || 0,
+              currentState: config.currentState || 'q0',
+              lastRuleId: null,
+              stepCount: 0
+           }],
+           historyIndex: 0,
+           stepCount: 0,
+           visitedStates: new Set([config.currentState || 'q0']),
+           symbolAliases: config.symbolAliases || {},
+           bookmarks: config.bookmarks || {},
+           diagramCheckpoints: config.diagramCheckpoints || [],
+           statistics: { 
+             ...initialStatistics,
+             sessionStartTimeMs: performance.now(),
+             memoryUsage: Object.keys(config.tape || {}).length * 8,
+             uniqueStatesVisited: 1
+           }
+        });
+      },
+      
+      setSymbolAliases: (aliases) => set({ symbolAliases: aliases }),
 
       loadScenario: (scenario) => {
         const initialTape: Record<number, string> = {};
@@ -340,7 +389,8 @@ export const useTMStore = create<TMState>()(
         status: state.status,
         statistics: state.statistics,
         bookmarks: state.bookmarks,
-        diagramCheckpoints: state.diagramCheckpoints
+        diagramCheckpoints: state.diagramCheckpoints,
+        symbolAliases: state.symbolAliases
       }),
       merge: (persistedState: any, currentState) => {
         return {

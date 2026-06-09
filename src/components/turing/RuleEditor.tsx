@@ -9,6 +9,7 @@ export const RuleEditor: React.FC = () => {
   const setRules = useTMStore(state => state.setRules);
   const lastRuleId = useTMStore(state => state.lastRuleId);
   const isRunning = useTMStore(state => state.isRunning);
+  const activeScenario = useTMStore(state => state.activeScenario);
 
   const [localRules, setLocalRules] = useState<TMRule[]>(rules);
 
@@ -107,9 +108,10 @@ export const RuleEditor: React.FC = () => {
               const isActive = lastRuleId === rule.id;
               
               const getStateColor = (s: string) => {
+                if (s === activeScenario?.initialState) return 'text-green-500';
                 const lower = s.toLowerCase();
                 if (lower.includes('accept') || lower.includes('halt') || lower.includes('found') || s === 'H') return 'text-red-400';
-                if (lower.includes('start') || s === 'q0' || s === 'A') return 'text-green-400';
+                if (lower.includes('start') || s === 'q0' || s === 'A') return 'text-green-500';
                 return 'text-blue-400';
               };
               const getSymbolColor = (s: string) => s === '_' ? 'text-text-muted' : 'text-amber-400';

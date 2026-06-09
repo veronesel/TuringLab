@@ -1,6 +1,7 @@
 import React, { useMemo, useEffect } from 'react';
 import { ReactFlow, Controls, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges } from '@xyflow/react';
-import { Save, ChevronDown, Trash2 } from 'lucide-react';
+import { Save, ChevronDown, Trash2, Camera } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import '@xyflow/react/dist/style.css';
 import { useTMStore } from '../../store/tmStore';
 
@@ -18,6 +19,9 @@ const StateDiagramInternal: React.FC = () => {
   const removeDiagramCheckpoint = useTMStore(state => state.removeDiagramCheckpoint);
   const diagramCheckpoints = useTMStore(state => state.diagramCheckpoints);
   const jumpToStep = useTMStore(state => state.jumpToStep);
+  const undo = useTMStore(state => state.undo);
+  const historyIndex = useTMStore(state => state.historyIndex);
+  const isRunning = useTMStore(state => state.isRunning);
 
   const { nodes, edges } = useMemo(() => {
     const states = new Set<string>();
@@ -86,7 +90,7 @@ const StateDiagramInternal: React.FC = () => {
       if (status === 'error' && isActive) bgColor = '#ef4444';
       if (status === 'rejected' && isActive) bgColor = '#f97316';
 
-      let borderColor = isAccept ? '#22c55e' : (isStart ? '#3b82f6' : 'var(--color-border-main)');
+      let borderColor = isStart ? '#22c55e' : (isAccept ? '#3b82f6' : 'var(--color-border-main)');
       let borderStyle = isAccept ? '4px double' : '2px solid';
 
       if (isUnreachable || isStuck) {
@@ -225,6 +229,21 @@ const StateDiagramInternal: React.FC = () => {
     updateScenarioPositions({ [node.id]: node.position });
   };
 
+  const handleSnapshot = async () => {
+    const el = document.querySelector('.react-flow') as HTMLElement;
+    if (!el) return;
+    try {
+      const canvas = await html2canvas(el, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = imgData;
+      a.download = `turing-diagram-${Date.now()}.png`;
+      a.click();
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div className="flex-1 relative overflow-hidden flex flex-col min-h-0 min-w-0" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
       <div className="p-3 flex justify-between items-center z-10 relative pointer-events-none shrink-0 border-b border-border-main min-w-0 overflow-x-auto no-scrollbar gap-4" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
@@ -241,6 +260,21 @@ const StateDiagramInternal: React.FC = () => {
              className="text-[9px] font-bold bg-bg-element hover:bg-border-active text-text-primary px-2 py-0.5 rounded transition-colors border border-transparent"
            >
              ZOOM TO FIT
+           </button>
+           <button 
+             onClick={handleSnapshot}
+             className="flex items-center gap-1 text-[9px] font-bold bg-bg-element hover:bg-border-active text-text-primary px-2 py-0.5 rounded transition-colors border border-transparent"
+           >
+             <Camera size={10} /> SNAPSHOT
+           </button>
+
+           <button 
+             onClick={undo}
+             disabled={historyIndex <= 0 || isRunning}
+             className="text-[9px] font-bold bg-bg-element hover:bg-border-active disabled:opacity-50 text-text-primary px-2 py-0.5 rounded transition-colors border border-transparent"
+             title="Undo State Change"
+           >
+             STEP BACK
            </button>
            
            {/* Checkpoint Dropdown */}
