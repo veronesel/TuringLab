@@ -10,12 +10,13 @@ import { Controls } from './components/turing/Controls';
 import { Statistics, Debugger } from './components/turing/Statistics';
 import { ScenarioLibrary } from './components/turing/ScenarioLibrary';
 import { RuleEditor } from './components/turing/RuleEditor';
+import { AdvancedRuleStudio } from './components/turing/AdvancedRuleStudio';
 import { PerformanceOverlay } from './components/turing/PerformanceOverlay';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
 import { ShortcutsModal } from './components/turing/ShortcutsModal';
 import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
-import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table } from 'lucide-react';
+import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2 } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
 import { useThemeStore, DARK_SCHEMAS, LIGHT_SCHEMAS } from './store/themeStore';
@@ -43,6 +44,7 @@ export default function App() {
   const [isExplaining, setIsExplaining] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
   
   const [activeLayoutId, setActiveLayoutId] = useState('turing-layout-custom');
   const [layoutResetKey, setLayoutResetKey] = useState(0);
@@ -107,6 +109,10 @@ export default function App() {
   const pause = useTMStore(state => state.pause);
   const resetMachine = useTMStore(state => state.resetMachine);
   const importConfiguration = useTMStore(state => state.importConfiguration);
+  const undoEdit = useTMStore(state => state.undoEdit);
+  const redoEdit = useTMStore(state => state.redoEdit);
+  const editHistoryIndex = useTMStore(state => state.editHistoryIndex);
+  const editHistory = useTMStore(state => state.editHistory);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAliasPanelOpen, setIsAliasPanelOpen] = useState(false);
@@ -332,7 +338,7 @@ export default function App() {
   };
 
   return (
-    <div ref={containerRef} className="h-screen w-full bg-bg-base text-text-primary flex flex-col font-sans select-none overflow-hidden relative">
+    <div ref={containerRef} className="h-screen min-h-[820px] w-full bg-bg-base text-text-primary flex flex-col font-sans select-none overflow-y-auto relative">
       
       {/* Explain Logic Dialog Overlay */}
       {isExplaining || explanation ? (
@@ -433,6 +439,25 @@ export default function App() {
               title="Toggle Fullscreen"
             >
               {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            </button>
+          </div>
+
+          <div className="flex bg-bg-surface border border-border-main rounded p-0.5 ml-2">
+            <button
+              onClick={undoEdit}
+              disabled={editHistoryIndex <= 0 || isRunning}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element disabled:opacity-50 rounded text-text-secondary transition-colors"
+              title="Undo Edit"
+            >
+              <Undo2 size={14} />
+            </button>
+            <button
+              onClick={redoEdit}
+              disabled={editHistoryIndex >= editHistory.length - 1 || isRunning}
+              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element disabled:opacity-50 rounded text-text-secondary transition-colors"
+              title="Redo Edit"
+            >
+              <Redo2 size={14} />
             </button>
           </div>
 
@@ -633,8 +658,15 @@ export default function App() {
                     {renderHandle('horizontal')}
                     <Panel defaultSize={30} minSize={10} className="min-h-0 min-w-0 flex flex-col">
                       <aside data-tour="rules" className="w-full h-full bg-bg-surface flex flex-col z-10 border-l border-border-main min-h-0 min-w-0">
-                        <RuleEditor />
-                        <Statistics />
+                        <PanelGroup orientation="vertical">
+                          <Panel defaultSize={60} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+                            <RuleEditor onOpenStudio={() => setIsStudioOpen(true)} />
+                          </Panel>
+                          {renderHandle('vertical')}
+                          <Panel defaultSize={40} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+                            <Statistics />
+                          </Panel>
+                        </PanelGroup>
                       </aside>
                     </Panel>
                   </>
@@ -653,6 +685,7 @@ export default function App() {
         </Panel>
       </PanelGroup>
 
+      <AdvancedRuleStudio isOpen={isStudioOpen} onClose={() => setIsStudioOpen(false)} />
       <ShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
       <SymbolAliasesPanel isOpen={isAliasPanelOpen} onClose={() => setIsAliasPanelOpen(false)} />
       <HelpSidebar />

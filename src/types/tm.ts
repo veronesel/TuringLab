@@ -19,6 +19,8 @@ export interface TMScenario {
   acceptStates: string[];
   rules: TMRule[];
   customPositions?: Record<string, { x: number; y: number }>;
+  stateColors?: Record<string, string>;
+  stateLabels?: Record<string, string>;
   category?: string;
 }
 

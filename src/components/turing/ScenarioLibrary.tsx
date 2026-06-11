@@ -413,26 +413,38 @@ export const ScenarioLibrary: React.FC<{
         )}
       </div>
 
-      <div className="mt-auto p-3 border-t border-border-main bg-bg-panel shrink-0">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center justify-between">
-          <span>AI Generator</span>
-          <BrainCircuit size={12} className="text-primary-base" />
+      <div className="mt-auto p-3 border-t border-border-main bg-bg-panel/40 shrink-0">
+        <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#3b82f6] mb-1 flex items-center justify-between">
+          <span>AI Scenario Creator</span>
+          <BrainCircuit size={12} className="text-[#3b82f6] animate-pulse" />
         </div>
+        <p className="text-[9px] text-text-muted leading-tight mb-2">
+          Synthesize a complete new sandbox scenario from scratch, including initial tape and model properties.
+        </p>
         <textarea
-          placeholder="Describe target behavior..."
-          className="w-full bg-bg-surface border border-border-main rounded p-2 text-[10px] h-20 outline-none focus:border-primary-base text-text-secondary resize-none"
+          placeholder="e.g. A binary string palindrome checker with tape elements..."
+          className="w-full bg-[#161b22] border border-border-main rounded p-2 text-[10px] h-16 outline-none focus:border-[#4d5c6e] text-text-primary placeholder:text-text-faint resize-none leading-normal transition-colors"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
         <button
           onClick={handleGenerate}
           disabled={isGenerating || !prompt.trim()}
-          className="w-full bg-slate-200 text-black text-[10px] font-bold py-1.5 mt-2 rounded hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-full bg-[#1d4ed8] hover:bg-blue-600 text-white text-[10px] font-extrabold py-1.5 mt-1.5 rounded disabled:opacity-45 disabled:pointer-events-none transition-all flex items-center justify-center gap-1 uppercase tracking-wider shadow"
         >
-          {isGenerating ? "GENERATING..." : "GENERATE STATE CHART"}
+          {isGenerating ? (
+            <>
+              <Loader2 size={11} className="animate-spin text-white" />
+              Creating Scenario...
+            </>
+          ) : (
+            "Create New Scenario"
+          )}
         </button>
         {error && (
-          <div className="text-red-400 text-xs mt-2 break-words">{error}</div>
+          <div className="text-red-400 text-[10px] mt-1.5 break-words font-sans bg-red-950/20 border border-red-500/10 p-1 rounded">
+            {error}
+          </div>
         )}
       </div>
     </aside>

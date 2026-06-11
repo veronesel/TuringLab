@@ -31,7 +31,15 @@ export interface TMState {
   visitedStates: Set<string>;
   statistics: TMStatistics;
 
+  // Edit History
+  editHistory: { rules: TMRule[]; tape: Record<number, string> }[];
+  editHistoryIndex: number;
+
   // Actions
+  pushEdit: (rules: TMRule[], tape: Record<number, string>) => void;
+  undoEdit: () => void;
+  redoEdit: () => void;
+
   loadScenario: (scenario: TMScenario) => void;
   importConfiguration: (config: any) => void;
   setSymbolAliases: (aliases: Record<string, string>) => void;
@@ -53,6 +61,11 @@ export interface TMState {
   pause: () => void;
   setExecutionSpeed: (speed: number) => void;
   updateScenarioPositions: (positions: Record<string, { x: number; y: number }>) => void;
+  updateStateColor: (stateName: string, color: string) => void;
+  updateStateLabel: (stateName: string, label: string) => void;
+  deleteState: (stateName: string) => void;
+  setInitialState: (stateName: string) => void;
+  toggleAcceptState: (stateName: string) => void;
 }
 
 const initialStatistics: TMStatistics = {
@@ -89,6 +102,31 @@ export const useTMStore = create<TMState>()(
       symbolAliases: {},
       statistics: { ...initialStatistics },
       
+      editHistory: [],
+      editHistoryIndex: -1,
+      
+      pushEdit: (rules, tape) => set((state) => {
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ rules, tape: { ...tape } });
+        return { editHistory: newHistory, editHistoryIndex: newHistory.length - 1 };
+      }),
+      undoEdit: () => set((state) => {
+        if (state.editHistoryIndex > 0) {
+           const newIndex = state.editHistoryIndex - 1;
+           const prevState = state.editHistory[newIndex];
+           return { editHistoryIndex: newIndex, rules: prevState.rules, tape: prevState.tape };
+        }
+        return state;
+      }),
+      redoEdit: () => set((state) => {
+        if (state.editHistoryIndex < state.editHistory.length - 1) {
+           const newIndex = state.editHistoryIndex + 1;
+           const nextState = state.editHistory[newIndex];
+           return { editHistoryIndex: newIndex, rules: nextState.rules, tape: nextState.tape };
+        }
+        return state;
+      }),
+
       importConfiguration: (config) => {
         set({
            activeScenario: {
@@ -123,6 +161,8 @@ export const useTMStore = create<TMState>()(
            symbolAliases: config.symbolAliases || {},
            bookmarks: config.bookmarks || {},
            diagramCheckpoints: config.diagramCheckpoints || [],
+           editHistory: [{ rules: config.rules || [], tape: config.tape || {} }],
+           editHistoryIndex: 0,
            statistics: { 
              ...initialStatistics,
              sessionStartTimeMs: performance.now(),
@@ -161,6 +201,8 @@ export const useTMStore = create<TMState>()(
           historyIndex: 0,
           stepCount: 0,
           visitedStates: new Set([scenario.initialState]),
+          editHistory: [{ rules: scenario.rules, tape: { ...initialTape } }],
+          editHistoryIndex: 0,
           statistics: { 
             ...initialStatistics,
             sessionStartTimeMs: performance.now(),
@@ -171,11 +213,18 @@ export const useTMStore = create<TMState>()(
         });
       },
 
-      setRules: (rules) => set({ rules }),
+      setRules: (rules) => set((state) => {
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ rules, tape: { ...state.tape } });
+        return { rules, editHistory: newHistory, editHistoryIndex: newHistory.length - 1 };
+      }),
       
-      updateTapeSymbol: (index, symbol) => set((state) => ({
-        tape: { ...state.tape, [index]: symbol }
-      })),
+      updateTapeSymbol: (index, symbol) => set((state) => {
+        const newTape = { ...state.tape, [index]: symbol };
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ rules: state.rules, tape: newTape });
+        return { tape: newTape, editHistory: newHistory, editHistoryIndex: newHistory.length - 1 };
+      }),
 
       injectTapePattern: (pattern) => set((state) => {
         const newTape = { ...state.tape };
@@ -184,7 +233,9 @@ export const useTMStore = create<TMState>()(
           newTape[currentIndex] = pattern[i] === ' ' ? '_' : pattern[i];
           currentIndex++;
         }
-        return { tape: newTape };
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ rules: state.rules, tape: newTape });
+        return { tape: newTape, editHistory: newHistory, editHistoryIndex: newHistory.length - 1 };
       }),
 
       updateHeadPosition: (position) => set({ headPosition: position }),
@@ -370,6 +421,61 @@ export const useTMStore = create<TMState>()(
             useScenariosStore.getState().updateScenario(newScenario);
         }
 
+        return { activeScenario: newScenario };
+      }),
+      updateStateColor: (stateName, color) => set((state) => {
+        if (!state.activeScenario) return state;
+        const newScenario = { ...state.activeScenario, stateColors: { ...state.activeScenario.stateColors, [stateName]: color } };
+        
+        if (state.activeScenario) {
+            useScenariosStore.getState().updateScenario(newScenario);
+        }
+
+        return { activeScenario: newScenario };
+      }),
+      updateStateLabel: (stateName, label) => set((state) => {
+        if (!state.activeScenario) return state;
+        const newScenario = { ...state.activeScenario, stateLabels: { ...state.activeScenario.stateLabels, [stateName]: label } };
+        
+        if (state.activeScenario) {
+            useScenariosStore.getState().updateScenario(newScenario);
+        }
+
+        return { activeScenario: newScenario };
+      }),
+      deleteState: (stateName) => set((state) => {
+        if (!state.activeScenario) return state;
+        const newRules = state.rules.filter(r => r.currentState !== stateName && r.nextState !== stateName);
+        const newScenario = { 
+          ...state.activeScenario, 
+          rules: newRules,
+          acceptStates: state.activeScenario.acceptStates.filter(s => s !== stateName)
+        };
+        
+        useScenariosStore.getState().updateScenario(newScenario);
+        return { 
+          activeScenario: newScenario, 
+          rules: newRules,
+          currentState: state.currentState === stateName ? newScenario.initialState : state.currentState
+        };
+      }),
+      setInitialState: (stateName) => set((state) => {
+        if (!state.activeScenario) return state;
+        const newScenario = { ...state.activeScenario, initialState: stateName };
+        useScenariosStore.getState().updateScenario(newScenario);
+        return { 
+          activeScenario: newScenario,
+          currentState: state.historyIndex === 0 ? stateName : state.currentState 
+        };
+      }),
+      toggleAcceptState: (stateName) => set((state) => {
+        if (!state.activeScenario) return state;
+        const isAccept = state.activeScenario.acceptStates.includes(stateName);
+        const newAcceptStates = isAccept 
+          ? state.activeScenario.acceptStates.filter(s => s !== stateName)
+          : [...state.activeScenario.acceptStates, stateName];
+        const newScenario = { ...state.activeScenario, acceptStates: newAcceptStates };
+        useScenariosStore.getState().updateScenario(newScenario);
         return { activeScenario: newScenario };
       })
     }),

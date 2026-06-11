@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTMStore } from '../../store/tmStore';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 const StateHeatmap: React.FC = () => {
   const history = useTMStore(state => state.history);
@@ -40,6 +41,82 @@ const StateHeatmap: React.FC = () => {
   );
 };
 
+const TimeComplexityChart: React.FC = () => {
+  const history = useTMStore(state => state.history);
+  const historyIndex = useTMStore(state => state.historyIndex);
+
+  const chartData = useMemo(() => {
+    // We only want to plot up to the current history index
+    const activeHistory = history.slice(0, historyIndex + 1);
+    
+    // Subsample if history is too large to keep render fast (~max 100 points)
+    const MAX_POINTS = 100;
+    const step = Math.max(1, Math.floor(activeHistory.length / MAX_POINTS));
+    
+    const data = [];
+    
+    for (let i = 0; i < activeHistory.length; i += step) {
+      const entry = activeHistory[i];
+      data.push({
+        stepCount: entry.stepCount,
+        headPosition: entry.headPosition
+      });
+    }
+    
+    // Ensure the final state is always included
+    if (activeHistory.length > 0 && (activeHistory.length - 1) % step !== 0) {
+       const lastEntry = activeHistory[activeHistory.length - 1];
+       data.push({
+         stepCount: lastEntry.stepCount,
+         headPosition: lastEntry.headPosition
+       });
+    }
+
+    return data;
+  }, [history, historyIndex]);
+
+  if (chartData.length <= 1) {
+    return (
+      <div className="mt-3 text-[10px] font-sans flex flex-col h-32">
+        <div className="text-[9px] text-text-muted mb-1 uppercase font-bold">Space-Time Complexity</div>
+        <div className="flex-1 flex items-center justify-center border border-border-main rounded bg-bg-surface text-text-faint">
+          Not enough data yet
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 text-[10px] font-sans flex flex-col h-32">
+      <div className="text-[9px] text-text-muted mb-1 uppercase font-bold">Space-Time Complexity</div>
+      <div className="flex-1 bg-bg-surface border border-border-main rounded p-1 pt-2">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: -10 }}>
+            <XAxis dataKey="stepCount" tick={{ fontSize: 8, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={{ stroke: 'var(--color-border-main)' }} minTickGap={20} />
+            <YAxis tick={{ fontSize: 8, fill: 'var(--color-text-muted)' }} tickLine={false} axisLine={{ stroke: 'var(--color-border-main)' }} width={40} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: 'var(--color-bg-panel)', border: '1px solid var(--color-border-main)', fontSize: '10px', borderRadius: '4px' }}
+              itemStyle={{ color: 'var(--color-primary-base)' }}
+              labelStyle={{ color: 'var(--color-text-muted)', marginBottom: '2px' }}
+              labelFormatter={(label) => `Step: ${label}`}
+              formatter={(value: any) => [value, 'Tape Head']}
+              isAnimationActive={false}
+            />
+            <Line 
+              type="stepAfter" 
+              dataKey="headPosition" 
+              stroke="var(--color-primary-base)" 
+              strokeWidth={1.5} 
+              dot={false}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
 export const Statistics: React.FC = () => {
   const statistics = useTMStore(state => state.statistics);
   const status = useTMStore(state => state.status);
@@ -60,7 +137,7 @@ export const Statistics: React.FC = () => {
   const memoryUsage = Object.keys(tape).length;
 
   return (
-    <div className="border-t border-border-main bg-bg-panel p-3 overflow-hidden flex flex-col font-sans shrink-0 min-w-0">
+    <div className="bg-bg-panel p-3 overflow-y-auto flex flex-col font-sans flex-1 min-h-0 min-w-0">
       <div className="flex justify-between items-center mb-2 min-w-0 flex-wrap gap-2">
         <span className="text-[10px] font-bold text-text-muted uppercase">Real-time Stats</span>
         <span className={`text-[10px] uppercase font-bold ${status === 'running' ? 'text-primary-base' : status === 'accepted' ? 'text-green-400' : status === 'error' || status === 'rejected' ? 'text-red-400' : 'text-text-secondary'}`}>{status}</span>
@@ -105,6 +182,7 @@ export const Statistics: React.FC = () => {
         </div>
       </div>
       
+      <TimeComplexityChart />
       <StateHeatmap />
     </div>
   );
