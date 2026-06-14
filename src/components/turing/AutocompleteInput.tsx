@@ -10,6 +10,8 @@ interface AutocompleteInputProps {
   title?: string;
   suggestions: string[];
   symbolAliases?: Record<string, string>;
+  stateColor?: string;
+  stateColors?: Record<string, string>;
 }
 
 export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
@@ -22,6 +24,8 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   title,
   suggestions,
   symbolAliases = {},
+  stateColor,
+  stateColors,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -106,7 +110,14 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   };
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className="relative w-full flex items-center">
+      {stateColor && stateColor !== '' && (
+        <span 
+          className="absolute left-2 w-2.5 h-2.5 rounded-full border border-black/40 shadow-sm shrink-0 z-10" 
+          style={{ backgroundColor: stateColor }}
+          title="State Color"
+        />
+      )}
       <input
         ref={inputRef}
         type="text"
@@ -121,6 +132,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         maxLength={maxLength}
         title={title}
         className={className}
+        style={{ paddingLeft: stateColor && stateColor !== '' ? '22px' : undefined }}
         autoComplete="off"
         spellCheck={false}
       />
@@ -134,6 +146,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
             const isSelected = idx === activeIndex;
             const alias = symbolAliases[item];
             const isSymbol = field === 'readSymbol' || field === 'writeSymbol';
+            const itemColor = !isSymbol && stateColors ? stateColors[item] : undefined;
             
             return (
               <div
@@ -149,7 +162,15 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
                     : 'text-text-primary hover:bg-[#1a212d]'
                 }`}
               >
-                <span>{item === '_' ? 'Blank (_)' : item}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {itemColor && itemColor !== '' && (
+                    <span 
+                      className="w-2 h-2 rounded-full border border-black/40 shrink-0" 
+                      style={{ backgroundColor: itemColor }} 
+                    />
+                  )}
+                  <span>{item === '_' ? 'Blank (_)' : item}</span>
+                </div>
                 {isSymbol && alias && (
                   <span className="text-[8px] text-text-muted italic ml-2">({alias})</span>
                 )}

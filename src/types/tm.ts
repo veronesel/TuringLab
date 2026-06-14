@@ -30,6 +30,7 @@ export interface TMHistoryEntry {
   currentState: string;
   lastRuleId: string | null;
   stepCount: number;
+  statistics?: TMStatistics;
 }
 
 export interface TMStatistics {

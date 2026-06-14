@@ -1,8 +1,8 @@
 import React, { useMemo, useEffect, useCallback } from 'react';
-import { ReactFlow, Controls, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges, MiniMap, Connection } from '@xyflow/react';
+import { ReactFlow, Controls, ControlButton, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges, MiniMap, Connection, getNodesBounds, getViewportForBounds, Panel } from '@xyflow/react';
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force';
-import { Save, ChevronDown, Trash2, Camera, X, HelpCircle } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize } from 'lucide-react';
+import { toPng } from 'html-to-image';
 import '@xyflow/react/dist/style.css';
 import { useTMStore } from '../../store/tmStore';
 
@@ -445,17 +445,23 @@ const getScenarioExplanation = (id: string, rulesList: TMRule[] = [], activeScen
   }
 };
 
-const StateDiagramInternal: React.FC = () => {
+interface StateDiagramProps {
+  onExplainLogic?: () => void;
+}
+
+const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) => {
   const rules = useTMStore(state => state.rules);
   const setRules = useTMStore(state => state.setRules);
   const activeScenario = useTMStore(state => state.activeScenario);
   const currentState = useTMStore(state => state.currentState);
   const lastRuleId = useTMStore(state => state.lastRuleId);
   const status = useTMStore(state => state.status);
-  const { fitBounds, getNodes, setViewport, getZoom } = useReactFlow();
+  const { fitBounds, getNodes, setViewport, getZoom, fitView } = useReactFlow();
   const [autoFit, setAutoFit] = React.useState(true);
   const [showCheckpoints, setShowCheckpoints] = React.useState(false);
   const [showMinimap, setShowMinimap] = React.useState(false);
+  const [showLegend, setShowLegend] = React.useState(false);
+  const [showArrows, setShowArrows] = React.useState(true);
   const [showHowItWorks, setShowHowItWorks] = React.useState(false);
 
   const addDiagramCheckpoint = useTMStore(state => state.addDiagramCheckpoint);
@@ -464,14 +470,17 @@ const StateDiagramInternal: React.FC = () => {
   const jumpToStep = useTMStore(state => state.jumpToStep);
   const undo = useTMStore(state => state.undo);
   const historyIndex = useTMStore(state => state.historyIndex);
+  const history = useTMStore(state => state.history);
   const isRunning = useTMStore(state => state.isRunning);
   
   const deleteState = useTMStore(state => state.deleteState);
   const setInitialState = useTMStore(state => state.setInitialState);
   const toggleAcceptState = useTMStore(state => state.toggleAcceptState);
 
+  const [heatmapMode, setHeatmapMode] = React.useState(false);
   const [contextMenu, setContextMenu] = React.useState<{ id: string; top: number; left: number; showAlign: boolean } | null>(null);
   const [hoveredNode, setHoveredNode] = React.useState<{ id: string; x: number; y: number; boundsWidth: number; boundsHeight: number } | null>(null);
+  const [hoveredEdge, setHoveredEdge] = React.useState<{ id: string; x: number; y: number; boundsWidth: number; boundsHeight: number } | null>(null);
   const symbolAliases = useTMStore(state => state.symbolAliases);
 
   const onNodeContextMenu = React.useCallback(
@@ -528,6 +537,36 @@ const StateDiagramInternal: React.FC = () => {
 
   const onNodeMouseLeave = React.useCallback(() => {
     setHoveredNode(null);
+  }, []);
+
+  const onEdgeMouseEnter = React.useCallback((event: React.MouseEvent, edge: Edge) => {
+    const pane = document.querySelector('.react-flow') as HTMLElement;
+    if (!pane) return;
+    const bounds = pane.getBoundingClientRect();
+    setHoveredEdge({
+      id: edge.id,
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+      boundsWidth: bounds.width,
+      boundsHeight: bounds.height
+    });
+  }, []);
+
+  const onEdgeMouseMove = React.useCallback((event: React.MouseEvent, edge: Edge) => {
+    const pane = document.querySelector('.react-flow') as HTMLElement;
+    if (!pane) return;
+    const bounds = pane.getBoundingClientRect();
+    setHoveredEdge({
+      id: edge.id,
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+      boundsWidth: bounds.width,
+      boundsHeight: bounds.height
+    });
+  }, []);
+
+  const onEdgeMouseLeave = React.useCallback(() => {
+    setHoveredEdge(null);
   }, []);
 
   const handleAlign = React.useCallback((type: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
@@ -610,6 +649,17 @@ const StateDiagramInternal: React.FC = () => {
     const centerX = 250;
     const centerY = 250;
 
+    const stateFrequencies: Record<string, number> = {};
+    let maxFreq = 0;
+    if (heatmapMode) {
+      // Calculate frequencies up to current history index
+      const stepsToConsider = history.slice(0, historyIndex + 1);
+      stepsToConsider.forEach(entry => {
+        stateFrequencies[entry.currentState] = (stateFrequencies[entry.currentState] || 0) + 1;
+      });
+      maxFreq = Math.max(...Object.values(stateFrequencies), 1);
+    }
+
     const newNodes: Node[] = statesArr.map((stateName, index) => {
       const angle = (index / statesArr.length) * 2 * Math.PI;
       
@@ -645,9 +695,36 @@ const StateDiagramInternal: React.FC = () => {
       let textColor = isActive || customColor ? '#fff' : (isUnreachable || isStuck ? '#fca5a5' : 'var(--color-text-primary)');
       if (customColor && customColor === 'var(--color-diagram-node)') textColor = 'var(--color-text-primary)';
 
-      const labelContent = customLabel ? (
+      let tooltipText = customLabel;
+
+      if (heatmapMode) {
+         const freq = stateFrequencies[stateName] || 0;
+         const ratio = freq / maxFreq;
+         tooltipText = `Heatmap: ${freq} visits (${Math.round(ratio * 100)}%)`;
+         
+         if (freq === 0) {
+            bgColor = '#1e1e24'; // muted dark
+            textColor = 'rgba(255, 255, 255, 0.2)';
+            borderColor = 'rgba(255, 255, 255, 0.1)';
+         } else {
+            // 240 is blue, 0 is red
+            const h = (1 - Math.pow(ratio, 0.7)) * 240; 
+            bgColor = `hsla(${h}, 80%, 50%, 0.85)`;
+            textColor = '#fff';
+            borderColor = `hsl(${h}, 80%, 40%)`;
+         }
+         
+         if (isActive) {
+            borderColor = '#fff';
+            borderStyle = '4px solid';
+            bgColor = `hsla(${(1 - Math.pow(ratio, 0.7)) * 240}, 100%, 60%, 1)`;
+         }
+      }
+
+      const labelContent = customLabel || heatmapMode ? (
         <div className="flex flex-col items-center justify-center leading-tight">
-          <span className="text-[11px] truncate max-w-[60px]" title={customLabel}>{customLabel}</span>
+          {customLabel && !heatmapMode && <span className="text-[11px] truncate max-w-[60px]" title={customLabel}>{customLabel}</span>}
+          {heatmapMode && <span className="text-[11px] font-bold truncate max-w-[60px]" title={tooltipText}>{stateFrequencies[stateName] || 0}</span>}
           <span className="text-[8px] opacity-75 mt-0.5">{stateName}</span>
         </div>
       ) : stateName;
@@ -656,23 +733,29 @@ const StateDiagramInternal: React.FC = () => {
         id: stateName,
         type: 'custom',
         position: { x, y },
-        data: { label: labelContent, style: {
-          background: bgColor,
-          color: isActive ? 'var(--color-bg-base)' : textColor,
-          border: borderStyle,
-          borderColor: borderColor,
-          borderRadius: isAccept ? '50%' : '12px',
-          width: isAccept ? 45 : 70,
-          height: 45,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          fontWeight: 'bold',
-          transition: 'all 0.3s ease',
-          boxShadow: isActive ? '0 0 15px var(--color-primary-base)' : (isUnreachable || isStuck ? '0 0 10px rgba(239, 68, 68, 0.4)' : 'none'),
-          fontFamily: 'sans-serif',
-          fontSize: '12px'
-        } },
+        data: { 
+          label: labelContent, 
+          isActive: isActive,
+          isAccept: isAccept,
+          isStart: isStart,
+          style: {
+            background: bgColor,
+            color: isActive ? 'var(--color-bg-base)' : textColor,
+            border: borderStyle,
+            borderColor: borderColor,
+            borderRadius: isAccept ? '50%' : '12px',
+            width: isAccept ? 45 : 70,
+            height: 45,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            fontWeight: 'bold',
+            transition: 'all 0.3s ease',
+            boxShadow: isActive ? '0 0 15px var(--color-primary-base)' : (isUnreachable || isStuck ? '0 0 10px rgba(239, 68, 68, 0.4)' : 'none'),
+            fontFamily: 'sans-serif',
+            fontSize: '12px'
+          } 
+        },
         draggable: true,
         width: isAccept ? 45 : 70,
         height: 45,
@@ -693,29 +776,31 @@ const StateDiagramInternal: React.FC = () => {
 
       newNodes.push({
         id: '__start__',
-        type: 'default',
+        type: 'custom',
         position: { x: startX, y: startY },
-        data: { label: '' },
+        data: { 
+          label: '',
+          style: {
+            background: 'var(--color-text-primary)',
+            border: 'none',
+            borderRadius: '50%',
+            width: 20,
+            height: 20,
+            minWidth: 20,
+          }
+        },
         draggable: true,
         width: 20,
         height: 20,
         measured: { width: 20, height: 20 },
         className: '!transition-all !duration-300 ease-in-out',
-        style: {
-          background: 'var(--color-text-primary)',
-          border: 'none',
-          borderRadius: '50%',
-          width: 20,
-          height: 20,
-          minWidth: 20,
-        }
       });
     }
 
-    const newEdges: Edge[] = rules.map(rule => {
+    const newEdges: Edge[] = rules.map((rule, idx) => {
       const isActiveTrans = rule.id === lastRuleId;
       return {
-        id: rule.id,
+        id: `${rule.id}-${idx}`,
         source: rule.currentState,
         target: rule.nextState,
         label: `${rule.readSymbol}→${rule.writeSymbol},${rule.moveDirection}`,
@@ -728,10 +813,10 @@ const StateDiagramInternal: React.FC = () => {
         },
         labelStyle: { fill: isActiveTrans ? 'var(--color-primary-base)' : 'var(--color-text-muted)', fontWeight: isActiveTrans ? 'bold' : 'normal', fontSize: 10, fontFamily: 'monospace' },
         labelBgStyle: { fill: 'var(--color-bg-surface)', fillOpacity: 0.8 },
-        markerEnd: {
+        markerEnd: showArrows ? {
           type: MarkerType.ArrowClosed,
           color: isActiveTrans ? 'var(--color-primary-base)' : 'var(--color-border-active)',
-        },
+        } : undefined,
       };
     });
 
@@ -743,12 +828,12 @@ const StateDiagramInternal: React.FC = () => {
         type: 'smart',
         className: '!transition-all !duration-300 ease-in-out',
         style: { stroke: 'var(--color-text-primary)', strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-text-primary)' },
+        markerEnd: showArrows ? { type: MarkerType.ArrowClosed, color: 'var(--color-text-primary)' } : undefined,
       });
     }
 
     return { nodes: newNodes, edges: newEdges };
-  }, [rules, activeScenario, currentState, lastRuleId, status]);
+  }, [rules, activeScenario, currentState, lastRuleId, status, heatmapMode, history, historyIndex, showArrows]);
 
   const doFitBounds = React.useCallback((duration = 800) => {
     const rfNodes = getNodes();
@@ -873,8 +958,6 @@ const StateDiagramInternal: React.FC = () => {
     const finalPositions = new Map<string, {x: number, y: number}>();
     
     for (const dragged of nodesToCheck) {
-      if (dragged.id === '__start__') continue;
-      
       let { x, y } = dragged.position;
       const width = dragged.measured?.width || 70;
       const height = dragged.measured?.height || 45;
@@ -883,27 +966,29 @@ const StateDiagramInternal: React.FC = () => {
       let iterations = 0;
       const padding = 16;
       
-      do {
-        hasCollision = false;
-        
-        for (const n of liveNodes) {
-          if (n.id === dragged.id || n.id === '__start__') continue;
+      if (dragged.id !== '__start__') {
+        do {
+          hasCollision = false;
           
-          const nPos = finalPositions.get(n.id) || n.position;
-          const nWidth = n.measured?.width || 70;
-          const nHeight = n.measured?.height || 45;
-          
-          const overlapX = x < nPos.x + nWidth + padding && x + width + padding > nPos.x;
-          const overlapY = y < nPos.y + nHeight + padding && y + height + padding > nPos.y;
-          
-          if (overlapX && overlapY) {
-            hasCollision = true;
-            y += nHeight / 2 + padding;
-            x += padding;
+          for (const n of liveNodes) {
+            if (n.id === dragged.id || n.id === '__start__') continue;
+            
+            const nPos = finalPositions.get(n.id) || n.position;
+            const nWidth = n.measured?.width || 70;
+            const nHeight = n.measured?.height || 45;
+            
+            const overlapX = x < nPos.x + nWidth + padding && x + width + padding > nPos.x;
+            const overlapY = y < nPos.y + nHeight + padding && y + height + padding > nPos.y;
+            
+            if (overlapX && overlapY) {
+              hasCollision = true;
+              y += nHeight / 2 + padding;
+              x += padding;
+            }
           }
-        }
-        iterations++;
-      } while(hasCollision && iterations < 50);
+          iterations++;
+        } while(hasCollision && iterations < 50);
+      }
       
       finalPositions.set(dragged.id, { x, y });
       updates[dragged.id] = { x, y };
@@ -952,24 +1037,56 @@ const StateDiagramInternal: React.FC = () => {
   }, [rules, setRules, setInitialState]);
 
   const handleSnapshot = async () => {
+    // Zoom out to show all nodes before snapshot
+    fitView({ duration: 800, padding: 0.2 });
+    
+    // Wait for the animation to complete
+    await new Promise(resolve => setTimeout(resolve, 850));
+    
     const el = document.querySelector('.react-flow') as HTMLElement;
     if (!el) return;
+    
+    // Hide UI elements momentarily
+    const controls = document.querySelector('.react-flow__controls') as HTMLElement;
+    const minimap = document.querySelector('.react-flow__minimap') as HTMLElement;
+    const panels = document.querySelectorAll('.react-flow__panel');
+    const hiddenPanels: HTMLElement[] = [];
+    
+    if (controls) controls.style.display = 'none';
+    if (minimap) minimap.style.display = 'none';
+    
+    panels.forEach(p => {
+      const panel = p as HTMLElement;
+      if (!panel.classList.contains('legend-panel')) {
+        panel.style.display = 'none';
+        hiddenPanels.push(panel);
+      }
+    });
+    
     try {
-      const canvas = await html2canvas(el, { scale: 2 });
-      const imgData = canvas.toDataURL('image/png');
+      // Use the actual container element and let html-to-image figure out the size
+      const dataUrl = await toPng(el, {
+        backgroundColor: window.getComputedStyle(document.body).backgroundColor,
+        pixelRatio: 2,
+      });
       const a = document.createElement('a');
-      a.href = imgData;
+      a.href = dataUrl;
       a.download = `turing-diagram-${Date.now()}.png`;
       a.click();
     } catch(e) {
-      console.error(e);
+      console.error('Failed to take snapshot', e);
+    } finally {
+      // Restore UI elements
+      if (controls) controls.style.display = '';
+      if (minimap) minimap.style.display = '';
+      hiddenPanels.forEach(p => p.style.display = '');
     }
   };
 
   return (
     <div className="flex-1 relative overflow-hidden flex flex-col min-h-0 min-w-0" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
       <div className="p-3 flex justify-between items-center z-10 relative pointer-events-none shrink-0 border-b border-border-main min-w-0 overflow-x-auto no-scrollbar gap-4" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
-         <span className="text-[10px] font-bold text-primary-base/50 tracking-widest uppercase italic font-sans shrink-0 whitespace-nowrap">Visual State Diagram v0.1</span>
+         <span className="text-[10px] font-bold text-primary-base/50 tracking-widest uppercase italic font-sans shrink-0 whitespace-nowrap">Visual State Diagram</span>
          <div className="flex gap-4 font-sans pointer-events-auto items-center shrink-0 font-sans">
             <button 
               onClick={() => setShowHowItWorks(true)}
@@ -985,22 +1102,35 @@ const StateDiagramInternal: React.FC = () => {
              AUTO-FIT : {autoFit ? 'ON' : 'OFF'}
            </button>
            <button 
+             onClick={() => setHeatmapMode(!heatmapMode)}
+             className={`text-[9px] font-bold px-2 py-0.5 rounded transition-colors ${heatmapMode ? 'bg-primary-dark border border-primary-base text-text-primary' : 'bg-bg-element hover:bg-border-active text-text-secondary border border-transparent'}`}
+             title="Color nodes based on how frequently the machine has entered each state"
+           >
+             HEATMAP : {heatmapMode ? 'ON' : 'OFF'}
+           </button>
+           <button 
              onClick={() => setShowMinimap(!showMinimap)}
              className={`text-[9px] font-bold px-2 py-0.5 rounded transition-colors ${showMinimap ? 'bg-primary-dark border border-primary-base text-text-primary' : 'bg-bg-element hover:bg-border-active text-text-secondary border border-transparent'}`}
            >
              MINIMAP : {showMinimap ? 'ON' : 'OFF'}
            </button>
            <button 
+             onClick={() => setShowLegend(!showLegend)}
+             className={`text-[9px] font-bold px-2 py-0.5 rounded transition-colors ${showLegend ? 'bg-primary-dark border border-primary-base text-text-primary' : 'bg-bg-element hover:bg-border-active text-text-secondary border border-transparent'}`}
+           >
+             LEGEND : {showLegend ? 'ON' : 'OFF'}
+           </button>
+           <button 
+             onClick={() => setShowArrows(!showArrows)}
+             className={`text-[9px] font-bold px-2 py-0.5 rounded transition-colors ${showArrows ? 'bg-primary-dark border border-primary-base text-text-primary' : 'bg-bg-element hover:bg-border-active text-text-secondary border border-transparent'}`}
+           >
+             ARROWS : {showArrows ? 'ON' : 'OFF'}
+           </button>
+           <button 
              onClick={handleRelayout}
              className="text-[9px] font-bold bg-bg-element hover:bg-border-active text-text-primary px-2 py-0.5 rounded transition-colors border border-transparent"
            >
              RE-LAYOUT
-           </button>
-           <button 
-             onClick={() => doFitBounds(800)}
-             className="text-[9px] font-bold bg-bg-element hover:bg-border-active text-text-primary px-2 py-0.5 rounded transition-colors border border-transparent"
-           >
-             ZOOM TO FIT
            </button>
            <button 
              onClick={handleSnapshot}
@@ -1212,6 +1342,101 @@ const StateDiagramInternal: React.FC = () => {
             </div>
           );
         })()}
+        {hoveredEdge && (() => {
+          const ruleId = hoveredEdge.id.split('-').slice(0, -1).join('-');
+          const rule = rules.find(r => r.id === ruleId) || rules.find(r => r.id === hoveredEdge.id);
+          if (!rule) return null;
+
+          const sourceColor = activeScenario?.stateColors?.[rule.currentState] || 'var(--color-diagram-node)';
+          const targetColor = activeScenario?.stateColors?.[rule.nextState] || 'var(--color-diagram-node)';
+          
+          const sourceLabel = activeScenario?.stateLabels?.[rule.currentState];
+          const targetLabel = activeScenario?.stateLabels?.[rule.nextState];
+
+          const getFormattedSymbol = (sym: string) => {
+            const clean = (sym || '_').trim() || '_';
+            const alias = symbolAliases?.[clean];
+            return alias ? `${clean} (${alias})` : clean;
+          };
+
+          const transformX = hoveredEdge.x > hoveredEdge.boundsWidth * 0.65 ? '-110%' : '15px';
+          const transformY = hoveredEdge.y > hoveredEdge.boundsHeight * 0.65 ? '-110%' : '15px';
+
+          const isActive = rule.id === lastRuleId;
+
+          return (
+            <div 
+              id="edge-hover-tooltip"
+              className="absolute z-[150] pointer-events-none bg-bg-panel/95 backdrop-blur-md border border-border-main p-3.5 rounded-lg shadow-2xl text-[10px] text-text-primary flex flex-col gap-3 max-w-[290px] min-w-[210px]"
+              style={{ 
+                top: hoveredEdge.y, 
+                left: hoveredEdge.x,
+                transform: `translate(${transformX}, ${transformY})`,
+                transition: 'transform 0.15s ease-out, top 0.05s ease-out, left 0.05s ease-out',
+              }}
+            >
+              <div className="flex flex-col gap-1 border-b border-border-main/60 pb-2">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-sans text-[9px] font-bold tracking-widest text-text-muted uppercase">
+                    Transition Rule
+                  </span>
+                  {isActive && (
+                    <span className="px-1.5 py-0.5 bg-primary-base/20 text-primary-base border border-primary-base/30 text-[8px] font-bold uppercase tracking-wider rounded font-sans leading-none shrink-0 animate-pulse">
+                      Active
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 font-mono">
+                <div className="flex items-center justify-between gap-1 bg-[#11141a]/60 border border-border-main/40 rounded-lg p-2 font-sans">
+                  <div className="flex flex-col items-center gap-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-1 max-w-full">
+                      <span className="w-2 h-2 rounded-full border border-black/40 shrink-0" style={{ backgroundColor: sourceColor === 'var(--color-diagram-node)' ? 'transparent' : sourceColor }}></span>
+                      <span className="font-mono text-[10px] font-bold truncate text-text-primary">{rule.currentState}</span>
+                    </div>
+                    {sourceLabel && <span className="text-[8px] text-text-faint truncate max-w-full">({sourceLabel})</span>}
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center shrink-0 px-1">
+                    <span className="text-[10px] text-text-faint font-bold leading-none">➜</span>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-1 max-w-full">
+                      <span className="w-2 h-2 rounded-full border border-black/40 shrink-0" style={{ backgroundColor: targetColor === 'var(--color-diagram-node)' ? 'transparent' : targetColor }}></span>
+                      <span className="font-mono text-[10px] font-bold truncate text-text-primary">{rule.nextState}</span>
+                    </div>
+                    {targetLabel && <span className="text-[8px] text-text-faint truncate max-w-full">({targetLabel})</span>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 border-t border-border-main/30 pt-2 font-sans text-xs">
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-text-muted">IF TAPE READS:</span>
+                    <code className="px-1.5 py-0.5 bg-[#11141a] border border-border-main/50 rounded font-mono font-bold text-amber-400">
+                      {getFormattedSymbol(rule.readSymbol)}
+                    </code>
+                  </div>
+                  
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-text-muted">THEN WRITE:</span>
+                    <code className="px-1.5 py-0.5 bg-[#11141a] border border-border-main/50 rounded font-mono font-bold text-emerald-400">
+                      {getFormattedSymbol(rule.writeSymbol)}
+                    </code>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-text-muted">AND MOVE HEAD:</span>
+                    <span className="px-2 py-0.5 bg-purple-950/40 text-purple-400 font-bold border border-purple-500/10 rounded font-mono">
+                      {rule.moveDirection === 'L' ? 'LEFT (L)' : rule.moveDirection === 'R' ? 'RIGHT (R)' : 'STAY (S)'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {selectedNode && (
           <div className="absolute z-[100] bottom-6 left-1/2 transform -translate-x-1/2 flex items-center gap-2 bg-bg-panel/95 backdrop-blur border border-border-main p-2 rounded-lg shadow-xl animate-in fade-in slide-in-from-bottom-5">
             <span className="text-[10px] font-bold text-text-primary px-2 tracking-wider">STATE : {selectedNode}</span>
@@ -1265,10 +1490,83 @@ const StateDiagramInternal: React.FC = () => {
           onNodeMouseEnter={onNodeMouseEnter}
           onNodeMouseMove={onNodeMouseMove}
           onNodeMouseLeave={onNodeMouseLeave}
-          onNodeDragStart={() => setHoveredNode(null)}
+          onNodeDragStart={() => { setHoveredNode(null); setHoveredEdge(null); }}
+          onEdgeMouseEnter={onEdgeMouseEnter}
+          onEdgeMouseMove={onEdgeMouseMove}
+          onEdgeMouseLeave={onEdgeMouseLeave}
         >
           <Background gap={16} size={1} color="var(--color-border-main)" />
-          <Controls showInteractive={false} />
+          <Controls showInteractive={false}>
+            <ControlButton onClick={() => doFitBounds(800)} title="Zoom to Fit">
+              <Maximize size={14} className="text-text-primary" />
+            </ControlButton>
+          </Controls>
+          {onExplainLogic && (
+            <Panel position="top-left" className="explain-panel">
+              <button 
+                onClick={onExplainLogic}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold bg-bg-surface text-primary-base border border-border-main rounded hover:bg-bg-element shadow-sm transition-colors"
+              >
+                <BrainCircuit size={12} /> EXPLAIN LOGIC
+              </button>
+            </Panel>
+          )}
+          {showLegend && (
+            <Panel position="bottom-left" className="legend-panel">
+              <div className="bg-bg-panel border border-border-main rounded-lg p-3 shadow-lg flex flex-col gap-2 max-w-[180px] pointer-events-auto">
+                <h3 className="text-[10px] font-bold text-text-muted uppercase tracking-widest border-b border-border-main pb-1 mb-1">Legend</h3>
+                
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-3 h-3 rounded-full bg-text-primary shrink-0"></div>
+                  <span className="text-text-secondary">Start Point</span>
+                </div>
+                
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-6 h-4 rounded bg-bg-element border-2 border-[#22c55e] shrink-0"></div>
+                  <span className="text-text-secondary">Initial State</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-6 h-4 rounded bg-bg-element border-2 border-border-main shrink-0"></div>
+                  <span className="text-text-secondary">Normal State</span>
+                </div>
+                
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-5 h-5 rounded-full bg-bg-element border-[3px] border-double border-[#3b82f6] shrink-0"></div>
+                  <span className="text-text-secondary">Accept State</span>
+                </div>
+                
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-6 h-4 rounded bg-[#450a0a] border-2 border-[#ef4444] shrink-0"></div>
+                  <span className="text-text-secondary">Stuck (Error)</span>
+                </div>
+                
+                <div className="flex items-center gap-2 text-xs mt-1 border-t border-border-main pt-2">
+                  <div className="font-mono text-[9px] bg-bg-surface px-1 py-0.5 rounded text-text-muted border border-border-main shrink-0">
+                    0→1,R
+                  </div>
+                  <div className="flex flex-col gap-0.5 leading-none">
+                    <span className="text-text-secondary text-[10px]">Transition Rule</span>
+                    <span className="text-text-muted text-[8px]">Read 0, Write 1, Move R</span>
+                  </div>
+                </div>
+
+                {activeScenario?.stateColors && Object.keys(activeScenario.stateColors).length > 0 && (
+                  <div className="flex flex-col gap-1 mt-1 border-t border-border-main pt-2 max-h-36 overflow-y-auto no-scrollbar">
+                    <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">State Colors:</span>
+                    {Object.entries(activeScenario.stateColors)
+                      .filter(([_, color]) => color && color !== 'var(--color-diagram-node)')
+                      .map(([stateName, color]) => (
+                        <div key={stateName} className="flex items-center gap-2 text-xs">
+                          <div className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/40" style={{ backgroundColor: color }}></div>
+                          <span className="text-text-secondary truncate text-[10px]" title={stateName}>{stateName}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </Panel>
+          )}
           {showMinimap && (
             <MiniMap 
               nodeColor={(n) => {
@@ -1386,8 +1684,8 @@ const StateDiagramInternal: React.FC = () => {
   );
 };
 
-export const StateDiagram: React.FC = () => (
+export const StateDiagram: React.FC<StateDiagramProps> = ({ onExplainLogic }) => (
   <ReactFlowProvider>
-    <StateDiagramInternal />
+    <StateDiagramInternal onExplainLogic={onExplainLogic} />
   </ReactFlowProvider>
 );

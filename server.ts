@@ -9,7 +9,7 @@ async function generateWithRetry(prompt: string, maxRetries = 3) {
   let attempt = 0;
   while (attempt < maxRetries) {
     try {
-      const model = attempt % 2 === 0 ? "gemini-2.5-flash" : "gemini-2.5-pro";
+      const model = "gemini-2.5-flash";
       return await ai.models.generateContent({
         model,
         contents: prompt,
@@ -20,14 +20,17 @@ async function generateWithRetry(prompt: string, maxRetries = 3) {
         error?.status === 503 || 
         error?.status === 429 || 
         error?.status === 'UNAVAILABLE' ||
+        error?.status === 'RESOURCE_EXHAUSTED' ||
         error?.message?.includes("503") || 
         error?.message?.includes("429");
         
       if (attempt >= maxRetries || !isRetriable) {
         throw error;
       }
-      console.warn(`Model generation attempt ${attempt} failed, retrying... (${error.message})`);
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      console.warn(`Model generation attempt ${attempt} failed, retrying... (${error?.message || 'Unknown error'})`);
+      // Wait a bit longer for 429s, otherwise standard backoff
+      const delay = error?.message?.includes("429") ? 5000 : 1000 * attempt;
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw new Error("Failed to generate content after retries");
@@ -111,6 +114,37 @@ async function startServer() {
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: error.message || "Failed to explain scenario" });
+    }
+  });
+
+  // API to fix rules using Gemini
+  app.post("/api/fix-rules", async (req, res) => {
+    try {
+      const { rules, issues } = req.body;
+      
+      const prompt = `You are an expert in Turing Machines. The user has a Turing Machine with the following transition rules:
+      ${JSON.stringify(rules)}
+      
+      The validator found the following issues:
+      ${JSON.stringify(issues)}
+      
+      Please provide a modified array of rules that fixes these issues (e.g. resolve deterministic conflicts, remove unreachable states or add rules to reach them). Keep the same JSON structure for rules: [{"id": "...", "currentState": "...", "readSymbol": "...", "nextState": "...", "writeSymbol": "...", "moveDirection": "..."}].
+      Only return valid JSON array without any markdown formatting.`;
+
+      const response = await generateWithRetry(prompt);
+      let responseText = response.text || "";
+      if (responseText.startsWith("\`\`\`json")) {
+        responseText = responseText.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+      } else if (responseText.startsWith("\`\`\`")) {
+        responseText = responseText.replace(/\`\`\`/g, "").trim();
+      }
+      responseText = responseText.replace(/\/\/.*$/gm, '').trim();
+
+      const fixedRules = JSON.parse(responseText);
+      res.json({ fixedRules });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: error.message || "Failed to fix rules" });
     }
   });
 

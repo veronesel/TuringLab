@@ -24,6 +24,7 @@ export const ScenarioLibrary: React.FC<{
   onToggleCollapse: () => void;
 }> = ({ isCollapsed, onToggleCollapse }) => {
   const loadScenario = useTMStore((state) => state.loadScenario);
+  const clearScenario = useTMStore((state) => state.clearScenario);
   const activeInstanceDetails = useTMStore((state) => state.activeScenario);
 
   const { activeScenarios, customScenarios, scenarioProgress, addActiveScenario, removeActiveScenario, clearActiveScenarios, addCustomScenario } =
@@ -33,7 +34,7 @@ export const ScenarioLibrary: React.FC<{
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<"library" | "active">("library");
+  const [tab, setTab] = useState<"library" | "active">("active");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -397,7 +398,13 @@ export const ScenarioLibrary: React.FC<{
                       </div>
                     </button>
                     <button
-                      onClick={() => removeActiveScenario(sc.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeActiveScenario(sc.id);
+                        if (activeInstanceDetails?.id === sc.id) {
+                          clearScenario();
+                        }
+                      }}
                       className="px-2 text-text-faint hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center absolute right-0 top-0 bottom-0"
                       title="Remove from Active"
                     >

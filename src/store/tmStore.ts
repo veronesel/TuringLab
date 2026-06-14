@@ -40,6 +40,7 @@ export interface TMState {
   undoEdit: () => void;
   redoEdit: () => void;
 
+  clearScenario: () => void;
   loadScenario: (scenario: TMScenario) => void;
   importConfiguration: (config: any) => void;
   setSymbolAliases: (aliases: Record<string, string>) => void;
@@ -66,6 +67,7 @@ export interface TMState {
   deleteState: (stateName: string) => void;
   setInitialState: (stateName: string) => void;
   toggleAcceptState: (stateName: string) => void;
+  clearTapeAndResetHead: () => void;
 }
 
 const initialStatistics: TMStatistics = {
@@ -128,6 +130,7 @@ export const useTMStore = create<TMState>()(
       }),
 
       importConfiguration: (config) => {
+        const safeRules = (config.rules || []).map((r: any) => ({ ...r, id: uuidv4() }));
         set({
            activeScenario: {
               id: config.id || 'imported',
@@ -137,9 +140,9 @@ export const useTMStore = create<TMState>()(
               acceptStates: config.acceptStates || [],
               initialTape: '',
               initialHeadPosition: config.headPosition || 0,
-              rules: config.rules || []
+              rules: safeRules
            },
-           rules: config.rules || [],
+           rules: safeRules,
            tape: config.tape || {},
            headPosition: config.headPosition || 0,
            currentState: config.currentState || 'q0',
@@ -161,7 +164,7 @@ export const useTMStore = create<TMState>()(
            symbolAliases: config.symbolAliases || {},
            bookmarks: config.bookmarks || {},
            diagramCheckpoints: config.diagramCheckpoints || [],
-           editHistory: [{ rules: config.rules || [], tape: config.tape || {} }],
+           editHistory: [{ rules: safeRules, tape: config.tape || {} }],
            editHistoryIndex: 0,
            statistics: { 
              ...initialStatistics,
@@ -173,6 +176,34 @@ export const useTMStore = create<TMState>()(
       },
       
       setSymbolAliases: (aliases) => set({ symbolAliases: aliases }),
+
+      clearScenario: () => {
+        set({
+          activeScenario: null,
+          rules: [],
+          tape: {},
+          headPosition: 0,
+          currentState: '',
+          status: 'idle',
+          isRunning: false,
+          isPaused: false,
+          lastRuleId: null,
+          errorMessage: null,
+          history: [{
+            tape: {},
+            headPosition: 0,
+            currentState: '',
+            lastRuleId: null,
+            stepCount: 0
+          }],
+          historyIndex: 0,
+          stepCount: 0,
+          visitedStates: new Set(),
+          editHistory: [{ rules: [], tape: {} }],
+          editHistoryIndex: 0,
+          statistics: { ...initialStatistics }
+        });
+      },
 
       loadScenario: (scenario) => {
         const initialTape: Record<number, string> = {};
@@ -216,7 +247,19 @@ export const useTMStore = create<TMState>()(
       setRules: (rules) => set((state) => {
         const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
         newHistory.push({ rules, tape: { ...state.tape } });
-        return { rules, editHistory: newHistory, editHistoryIndex: newHistory.length - 1 };
+        
+        let newActiveScenario = state.activeScenario;
+        if (newActiveScenario) {
+          newActiveScenario = { ...newActiveScenario, rules };
+          useScenariosStore.getState().updateScenario(newActiveScenario);
+        }
+        
+        return { 
+          rules, 
+          editHistory: newHistory, 
+          editHistoryIndex: newHistory.length - 1,
+          activeScenario: newActiveScenario
+        };
       }),
       
       updateTapeSymbol: (index, symbol) => set((state) => {
@@ -477,6 +520,40 @@ export const useTMStore = create<TMState>()(
         const newScenario = { ...state.activeScenario, acceptStates: newAcceptStates };
         useScenariosStore.getState().updateScenario(newScenario);
         return { activeScenario: newScenario };
+      }),
+      clearTapeAndResetHead: () => set((state) => {
+        const newTape = {};
+        const newEditHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newEditHistory.push({ rules: state.rules, tape: newTape });
+        const initialState = state.activeScenario?.initialState || 'q0';
+        return {
+          tape: newTape,
+          headPosition: 0,
+          currentState: initialState,
+          status: 'idle',
+          isRunning: false,
+          isPaused: false,
+          lastRuleId: null,
+          errorMessage: null,
+          history: [{
+            tape: newTape,
+            headPosition: 0,
+            currentState: initialState,
+            lastRuleId: null,
+            stepCount: 0
+          }],
+          historyIndex: 0,
+          stepCount: 0,
+          visitedStates: new Set([initialState]),
+          editHistory: newEditHistory,
+          editHistoryIndex: newEditHistory.length - 1,
+          statistics: {
+            ...initialStatistics,
+            sessionStartTimeMs: performance.now(),
+            memoryUsage: 0,
+            uniqueStatesVisited: 1
+          }
+        };
       })
     }),
     {

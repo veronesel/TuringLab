@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { TMRule, Direction } from '../../types/tm';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, FileText, Table } from 'lucide-react';
+import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, FileText, Table, Search, X, GripVertical } from 'lucide-react';
 import { AutocompleteInput } from './AutocompleteInput';
 
 interface RuleEditorProps {
@@ -77,6 +77,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const currentState = useTMStore(state => state.currentState);
   const headPosition = useTMStore(state => state.headPosition);
   const tape = useTMStore(state => state.tape);
+  const executionSpeed = useTMStore(state => state.executionSpeed);
 
   const [localRules, setLocalRules] = useState<TMRule[]>(rules);
   const [isBulkMode, setIsBulkMode] = useState<boolean>(false);
@@ -84,6 +85,11 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const [bulkErrors, setBulkErrors] = useState<string[]>([]);
   const [copied, setCopied] = useState<boolean>(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isFixingRules, setIsFixingRules] = useState<boolean>(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragRowId, setDragRowId] = useState<string | null>(null);
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const symbolAliases = useTMStore(state => state.symbolAliases);
@@ -100,9 +106,10 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
 
   // Auto-scroll to center the currently executing rule if it falls out of view
   React.useEffect(() => {
-    if (!executingRuleId) return;
+    if (!executingRuleId || !autoScroll) return;
 
-    // Utilize dynamic positioning within the scroll container
+    // Use shorter/longer debounce depending on speed
+    const delay = isRunning && executionSpeed < 100 ? 5 : 30;
     const timer = setTimeout(() => {
       const container = scrollContainerRef.current;
       const element = document.getElementById(`rule-row-${executingRuleId}`);
@@ -110,23 +117,27 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
         const containerRect = container.getBoundingClientRect();
         const elementRect = element.getBoundingClientRect();
 
-        const isAbove = elementRect.top < containerRect.top;
-        const isBelow = elementRect.bottom > containerRect.bottom;
+        // Check if element is above, below, or near boundaries
+        const isAbove = elementRect.top < containerRect.top + 15;
+        const isBelow = elementRect.bottom > containerRect.bottom - 15;
 
-        if (isAbove || isBelow) {
+        if (isAbove || isBelow || isRunning) {
           const elementRelativeTop = elementRect.top - containerRect.top + container.scrollTop;
           const targetScrollTop = elementRelativeTop - (container.clientHeight / 2) + (element.offsetHeight / 2);
 
+          // Use instant auto-scroll if simulation speed is fast to prevent stuttering/inertia lag
+          const useInstant = isRunning && executionSpeed < 300;
+
           container.scrollTo({
             top: targetScrollTop,
-            behavior: 'smooth'
+            behavior: useInstant ? 'auto' : 'smooth'
           });
         }
       }
-    }, 50);
+    }, delay);
 
     return () => clearTimeout(timer);
-  }, [executingRuleId]);
+  }, [executingRuleId, autoScroll, isRunning, executionSpeed]);
 
   // Compute unique states parsed from current rules, scenario settings and presets
   const uniqueStates = React.useMemo(() => {
@@ -282,6 +293,29 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
     }
   };
 
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index || isRunning || searchQuery) return;
+
+    const updated = [...localRules];
+    const [removed] = updated.splice(draggedIndex, 1);
+    updated.splice(index, 0, removed);
+
+    setLocalRules(updated);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragRowId(null);
+  };
+
   const updateRule = (id: string, field: keyof TMRule, value: string) => {
     setLocalRules(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
@@ -295,6 +329,41 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
       writeSymbol: "0",
       moveDirection: "R"
     }]);
+  };
+
+  const fixWithAI = async () => {
+    if (validationIssues.length === 0) return;
+    setIsFixingRules(true);
+    try {
+      const response = await fetch('/api/fix-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rules: localRules,
+          issues: validationIssues
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fix rules with AI');
+      }
+
+      const data = await response.json();
+      if (data.fixedRules && Array.isArray(data.fixedRules)) {
+        // preserve new UUIDs or old ones
+        const rulesWithIds = data.fixedRules.map((r: any) => ({
+          ...r,
+          id: r.id || uuidv4()
+        }));
+        setLocalRules(rulesWithIds);
+        setRules(rulesWithIds);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to apply AI fix');
+    } finally {
+      setIsFixingRules(false);
+    }
   };
 
   const removeRule = (id: string) => {
@@ -376,6 +445,17 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const hasChanges = isBulkMode 
     ? rulesToText(rules) !== bulkText 
     : JSON.stringify(rules) !== JSON.stringify(localRules);
+
+  const filteredRules = React.useMemo(() => {
+    if (!searchQuery.trim()) return localRules;
+    const query = searchQuery.toLowerCase().trim();
+    return localRules.filter(r => 
+      r.currentState.toLowerCase().includes(query) ||
+      (r.readSymbol || '_').toLowerCase().includes(query) ||
+      (r.writeSymbol || '_').toLowerCase().includes(query) ||
+      r.nextState.toLowerCase().includes(query)
+    );
+  }, [localRules, searchQuery]);
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden font-mono min-w-0 h-full">
@@ -480,7 +560,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                   {bulkErrors.slice(0, 3).map((e, idx) => (
                     <li key={idx} className="break-words font-mono text-[10.5px]">{e}</li>
                   ))}
-                  {bulkErrors.length > 3 && <li>...and {bulkErrors.length - 3} more errors.</li>}
+                  {bulkErrors.length > 3 && <li key="more">...and {bulkErrors.length - 3} more errors.</li>}
                 </ul>
               </div>
             ) : (
@@ -537,6 +617,40 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
         </div>
       ) : (
         <>
+          {/* Search Input Bar and Auto-Scroll at the top */}
+          <div className="px-3 py-2 bg-bg-panel/90 shrink-0 border-b border-border-main flex items-center justify-between gap-3 font-sans shadow-sm">
+            <div className="flex items-center gap-2 flex-1 min-w-0 bg-[#0d1117] border border-border-main focus-within:border-amber-500/80 focus-within:ring-1 focus-within:ring-amber-500/20 rounded-md px-2.5 py-1 transition-all">
+              <Search size={12} className="text-amber-500 shrink-0" />
+              <input 
+                type="text" 
+                placeholder="Filter rules by state, read, or write symbol..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-transparent border-none focus:outline-none text-[10.5px] text-text-primary placeholder:text-text-muted/50 font-sans"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')} 
+                  className="text-text-muted hover:text-text-primary transition-colors flex items-center justify-center w-4 h-4 rounded hover:bg-bg-element"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-1.5 shrink-0 pl-3 border-l border-border-main text-[9px] font-semibold text-text-muted h-5">
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-text-secondary select-none transition-colors" title="Toggle automatic scrolling to active rule during simulation execution">
+                <input
+                  type="checkbox"
+                  checked={autoScroll}
+                  onChange={(e) => setAutoScroll(e.target.checked)}
+                  className="rounded border border-border-main bg-bg-surface text-amber-500 focus:ring-0 w-3 h-3 cursor-pointer accent-amber-500"
+                />
+                <span className={autoScroll ? "text-amber-500 font-bold" : ""}>Auto-Scroll</span>
+              </label>
+            </div>
+          </div>
+
           {/* Validation Summary Panel */}
           {validationIssues.length > 0 && (
             <div className="mx-3 mt-2 bg-[#1c1212]/60 border border-red-500/20 rounded-lg overflow-hidden flex flex-col text-[10px] font-sans shadow-lg animate-in fade-in duration-300">
@@ -545,7 +659,24 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                   <AlertTriangle size={12} className="text-red-400 shrink-0" />
                   <span>Validation Summary ({validationIssues.length} issues)</span>
                 </div>
-                <span className="text-[8px] text-text-faint font-semibold uppercase tracking-wider">Click to locate issue</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[8px] text-text-faint font-semibold uppercase tracking-wider hidden sm:inline">Click to locate issue</span>
+                  <button 
+                    onClick={fixWithAI}
+                    disabled={isFixingRules}
+                    className="flex items-center gap-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isFixingRules ? (
+                      <>
+                        <Wand2 size={10} className="animate-pulse" /> Fixing...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={10} /> Fix with AI
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
               
               <div className="max-h-[140px] overflow-y-auto divide-y divide-[#1c1212] select-none">
@@ -584,6 +715,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
             <table className="w-full table-fixed min-w-[300px]">
               <thead className="text-text-muted border-b border-border-main text-left sticky top-0 bg-bg-surface z-10">
                 <tr>
+                  <th className="pb-1 font-normal w-6"></th>
                   <th className="pb-1 font-normal w-6 text-center text-text-faint">#</th>
                   <th className="pb-1 font-normal w-1/5 pl-2">ST</th>
                   <th className="pb-1 font-normal w-[15%]">IN</th>
@@ -594,7 +726,9 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#161B22]">
-                {localRules.map((rule, index) => {
+                {filteredRules.map((rule, displayIndex) => {
+                  const originalIndex = localRules.findIndex(r => r.id === rule.id);
+                  const index = originalIndex !== -1 ? originalIndex : displayIndex;
                   const isLastRule = lastRuleId === rule.id;
                   const currentReadSymbol = (tape[headPosition] || '_').trim() || '_';
                   const isMatching = rule.currentState.trim() === currentState.trim() && 
@@ -647,17 +781,42 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                     <tr 
                       key={rule.id} 
                       id={`rule-row-${rule.id}`}
+                      draggable={!isRunning && !searchQuery && dragRowId === rule.id}
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragEnd={handleDragEnd}
                       className={`transition-all duration-300 relative ${
-                        isHighlighted
-                          ? 'bg-amber-500/25 ring-1 ring-amber-500/60 border-l-2 border-amber-500 shadow-md font-semibold scale-[1.01] z-10'
-                          : isMatching 
-                            ? 'bg-primary-base/15 border-l-2 border-primary-base shadow-sm font-semibold' 
-                            : (isLastRule ? 'bg-primary-base/5 shadow-sm' : 'hover:bg-bg-panel/40')
+                        draggedIndex === index
+                          ? 'opacity-40 bg-[#161B22]/30 border-l-2 border-dashed border-primary-base'
+                          : isHighlighted
+                            ? 'bg-amber-500/25 ring-1 ring-amber-500/60 border-l-2 border-amber-500 shadow-md font-semibold scale-[1.01] z-10'
+                            : isMatching 
+                              ? 'bg-primary-base/20 border-l-4 border-primary-base shadow-md shadow-primary-base/30 font-bold scale-[1.01] z-10 duration-150' 
+                              : (isLastRule ? 'bg-primary-base/5 shadow-sm' : 'hover:bg-bg-panel/40')
                       }`}
                     >
+                      <td className="py-1.5 text-center text-text-faint select-none">
+                        {!isRunning && !searchQuery ? (
+                          <div 
+                            onMouseDown={() => setDragRowId(rule.id)}
+                            onMouseUp={() => setDragRowId(null)}
+                            className="cursor-grab active:cursor-grabbing hover:text-text-primary transition-colors py-1"
+                            title="Drag to reorder rules"
+                          >
+                            <GripVertical size={12} className="mx-auto" />
+                          </div>
+                        ) : (
+                          <div title={isRunning ? "Cannot reorder while running" : "Cannot reorder while searching"}>
+                            <GripVertical size={12} className="mx-auto opacity-20 cursor-not-allowed" />
+                          </div>
+                        )}
+                      </td>
                       <td className="py-1.5 text-center text-text-faint border-r border-[#161B22]/50 relative">
                         {isMatching && (
-                          <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-primary-base rounded-full animate-pulse" />
+                          <>
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-primary-base rounded-full animate-ping opacity-60" />
+                            <span className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-primary-base rounded-full shadow-[0_0_8px_var(--color-primary-base)]" />
+                          </>
                         )}
                         {isConflicting ? (
                           <span 
@@ -670,7 +829,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                             title={`Unreachable state: No transitions lead to state "${curStateTrimmed}"`} 
                           />
                         ) : null}
-                        <span className={isMatching ? 'text-primary-base font-bold' : ''}>{index + 1}</span>
+                        <span className={isMatching ? 'text-primary-base font-bold pl-2.5' : ''}>{index + 1}</span>
                       </td>
                       <td className="py-1.5 pl-2 pr-1">
                         <AutocompleteInput 
@@ -688,6 +847,8 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           }`}
                           suggestions={uniqueStates}
                           symbolAliases={symbolAliases}
+                          stateColor={activeScenario?.stateColors?.[rule.currentState]}
+                          stateColors={activeScenario?.stateColors}
                         />
                       </td>
                       <td className="py-1.5 px-1">
@@ -740,6 +901,8 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           className={`w-full bg-transparent border border-transparent focus:outline-none rounded px-2 py-0.5 text-[11px] font-mono leading-normal transition-all duration-150 ${getStateClass(rule.nextState)}`}
                           suggestions={uniqueStates}
                           symbolAliases={symbolAliases}
+                          stateColor={activeScenario?.stateColors?.[rule.nextState]}
+                          stateColors={activeScenario?.stateColors}
                         />
                       </td>
                       <td className="py-1 text-right pr-1">

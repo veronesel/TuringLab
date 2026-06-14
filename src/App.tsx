@@ -19,6 +19,7 @@ import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
 import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2 } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
+import { Breadcrumb } from './components/ui/Breadcrumb';
 import { useThemeStore, DARK_SCHEMAS, LIGHT_SCHEMAS } from './store/themeStore';
 
 const renderHandle = (direction: 'horizontal' | 'vertical') => (
@@ -187,15 +188,99 @@ export default function App() {
   };
 
   const handleExportPDF = async () => {
-    if (!containerRef.current) return;
     try {
-      const canvas = await html2canvas(containerRef.current, { scale: 1 });
-      const imgData = canvas.toDataURL('image/jpeg', 0.8);
-      const pdf = new jsPDF('landscape', 'px', [canvas.width, canvas.height]);
-      pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+      const state = useTMStore.getState();
+      const pdf = new jsPDF('portrait', 'pt', 'a4');
+      const marginX = 40;
+      let y = 40;
+      
+      pdf.setFontSize(18);
+      pdf.text(`Turing Machine Report: ${state.activeScenario?.name || 'Untitled'}`, marginX, y);
+      y += 20;
+
+      pdf.setFontSize(10);
+      pdf.setTextColor(100);
+      pdf.text(`Category: ${state.activeScenario?.category || 'Custom Workspace'}`, marginX, y);
+      y += 20;
+
+      pdf.text(`Generated on: ${new Date().toLocaleString()}`, marginX, y);
+      y += 30;
+
+      // Final Status
+      pdf.setTextColor(0);
+      pdf.setFontSize(14);
+      pdf.text('Execution Summary', marginX, y);
+      y += 20;
+
+      pdf.setFontSize(10);
+      pdf.text(`Status: ${state.status}`, marginX, y);
+      y += 15;
+      pdf.text(`Total Steps: ${state.stepCount}`, marginX, y);
+      y += 15;
+      pdf.text(`Final State: ${state.currentState}`, marginX, y);
+      y += 30;
+
+      // Final Tape Content
+      pdf.setFontSize(14);
+      pdf.text('Final Tape Content', marginX, y);
+      y += 20;
+
+      const tapeKeys = Object.keys(state.tape).map(Number).sort((a, b) => a - b);
+      let tapeContent = '... ';
+      if (tapeKeys.length > 0) {
+         for (let i = tapeKeys[0]; i <= tapeKeys[tapeKeys.length-1]; i++) {
+           tapeContent += (state.tape[i] || '_') + ' ';
+         }
+      }
+      tapeContent += '...';
+      
+      pdf.setFontSize(10);
+      pdf.setFont('courier');
+      // Wrap text
+      const splitTape = pdf.splitTextToSize(tapeContent, 500);
+      pdf.text(splitTape, marginX, y);
+      
+      y += (splitTape.length * 15) + 20;
+
+      // Execution History
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica');
+      pdf.text('Execution History Summary (Last 50 Steps)', marginX, y);
+      y += 20;
+
+      pdf.setFontSize(9);
+      pdf.setFont('courier');
+      
+      const endHistory = state.historyIndex >= 0 ? state.historyIndex + 1 : state.history.length;
+      const historyToExport = state.history.slice(0, endHistory).slice(-50);
+      
+      if (historyToExport.length === 0) {
+        pdf.text("No history available.", marginX, y);
+      } else {
+        const header = "Step | State          | Head | Sym";
+        pdf.text(header, marginX, y);
+        y += 15;
+        
+        for (const entry of historyToExport) {
+          if (y > 780) { // New page
+             pdf.addPage();
+             y = 40;
+             pdf.text(header, marginX, y);
+             y += 15;
+          }
+          const step = String(entry.stepCount).padStart(4, ' ');
+          const st = String(entry.currentState).padEnd(14, ' ').substring(0, 14);
+          const hd = String(entry.headPosition).padStart(4, ' ');
+          const sym = String(entry.tape[entry.headPosition] || '_').padStart(3, ' ');
+          pdf.text(`${step} | ${st} | ${hd} | ${sym}`, marginX, y);
+          y += 12;
+        }
+      }
+
       pdf.save(`TuringLab-Report-${Date.now()}.pdf`);
     } catch (e) {
       console.error("PDF export failed", e);
+      alert("Failed to export PDF: " + (e as Error).message);
     }
   };
 
@@ -372,23 +457,23 @@ export default function App() {
 
       {/* Header */}
       <header className="h-12 border-b border-border-main bg-bg-panel flex items-center justify-between px-4 shrink-0 relative z-50">
-        <div className="flex items-center gap-4">
-          <h1 className="font-mono font-bold text-primary-base tracking-tighter text-xl">
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+          <h1 className="font-mono font-bold text-primary-base tracking-tighter text-lg sm:text-xl hidden sm:block shrink-0">
             TURING<span className="text-text-primary">LAB</span> <span className="text-[10px] bg-primary-base/20 px-1 rounded border border-primary-base/30 ml-1">v4.0</span>
           </h1>
-          <div className="h-4 w-px bg-border-main"></div>
-          <span className="text-xs max-w-sm px-2 py-1 text-text-secondary hidden md:block truncate font-bold">
-            {activeScenario?.name || 'Loading...'}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={handleExplainLogic}
-            className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold bg-primary-base/20 text-primary-base border border-primary-base/30 rounded hover:bg-primary-base/40 transition-colors"
-          >
-            <BrainCircuit size={12} /> EXPLAIN LOGIC
-          </button>
+          <div className="h-4 w-px bg-border-main hidden sm:block"></div>
           
+          <Breadcrumb 
+            activeScenario={activeScenario} 
+            onNavigateToCategory={() => {
+              setIsSidebarCollapsed(false);
+              const panel = sidebarPanelRef.current;
+              if (panel && panel.isCollapsed()) panel.expand();
+            }}
+            onNavigateToMachine={() => setIsStudioOpen(true)}
+          />
+        </div>
+        <div className="flex items-center gap-1 sm:gap-3 shrink min-w-0 overflow-x-auto no-scrollbar ml-2">
           <div className="flex bg-bg-surface border border-border-main rounded p-0.5 ml-2">
             <input type="file" ref={fileInputRef} onChange={handleImportConfig} accept=".json" className="hidden" />
             <button 
@@ -408,7 +493,7 @@ export default function App() {
             <button 
               onClick={handleExportPDF}
               className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors"
-              title="Export PDF Report"
+              title="Export Detailed Report"
             >
               <FileText size={14} />
             </button>
@@ -435,10 +520,11 @@ export default function App() {
             </button>
             <button 
               onClick={toggleFullscreen}
-              className="flex items-center justify-center px-2 py-1 hover:bg-bg-element rounded text-text-secondary transition-colors border-l border-border-main ml-1"
+              className="flex items-center justify-center px-2 py-1 hover:bg-amber-500/10 rounded transition-colors border-l border-border-main ml-1"
+              style={{ color: '#f59e0b' }}
               title="Toggle Fullscreen"
             >
-              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              {isFullscreen ? <Minimize size={14} className="text-amber-500" /> : <Maximize size={14} className="text-amber-500" />}
             </button>
           </div>
 
@@ -646,7 +732,7 @@ export default function App() {
                     <Panel defaultSize={65} minSize={20} className="min-h-0 min-w-0 flex flex-col">
                       <div className="w-full h-full relative flex flex-col min-h-0 min-w-0">
                         <div data-tour="diagram" className="flex-1 w-full relative overflow-hidden flex flex-col bg-bg-base min-h-0 min-w-0">
-                          <StateDiagram />
+                          <StateDiagram onExplainLogic={handleExplainLogic} />
                         </div>
                       </div>
                     </Panel>

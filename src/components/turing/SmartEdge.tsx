@@ -58,6 +58,7 @@ export default function SmartEdge({
       {label && (
         <EdgeLabelRenderer>
           <div
+            key={id}
             style={{
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,

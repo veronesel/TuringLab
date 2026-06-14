@@ -1,11 +1,44 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { motion } from 'motion/react';
 
 export default function SmartNode({ data, selected }: any) {
   // Using 4 pairs of handles (source and target) so users can easily drag from any side
   // The SmartEdge will still calculate the exact visual path based on node centers!
   return (
-    <div style={data.style} className={`relative group ${data.className || ''} ${selected ? 'ring-2 ring-[var(--color-primary-base)] ring-offset-2 ring-offset-[var(--color-bg-base)]' : ''}`}>
+    <motion.div 
+      style={data.style} 
+      animate={{
+        scale: data.isActive ? 1.08 : 1,
+      }}
+      transition={{
+        type: "spring",
+        stiffness: 300,
+        damping: 20
+      }}
+      className={`relative group ${data.className || ''} ${selected ? 'ring-2 ring-[var(--color-primary-base)] ring-offset-2 ring-offset-[var(--color-bg-base)]' : ''}`}
+    >
+      {/* Outer pulsating aura for active state */}
+      {data.isActive && (
+        <motion.div
+          className="absolute inset-x-0 inset-y-0 pointer-events-none z-0"
+          style={{
+            borderRadius: data.style?.borderRadius || '12px',
+            border: '2px solid var(--color-primary-base)',
+            boxShadow: '0 0 15px var(--color-primary-base)',
+          }}
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.6, 0.2, 0.6],
+          }}
+          transition={{
+            duration: 1.6,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      )}
+
       <Handle type="target" position={Position.Top} id="t-top" className="opacity-0 group-hover:opacity-100 transition-opacity w-2 h-2 !bg-[var(--color-primary-base)]" />
       <Handle type="source" position={Position.Top} id="s-top" className="opacity-0 group-hover:opacity-100 transition-opacity w-2 h-2 !bg-[var(--color-primary-base)]" />
       
@@ -18,10 +51,11 @@ export default function SmartNode({ data, selected }: any) {
       <Handle type="target" position={Position.Right} id="t-right" className="opacity-0 group-hover:opacity-100 transition-opacity w-2 h-2 !bg-[var(--color-primary-base)]" />
       <Handle type="source" position={Position.Right} id="s-right" className="opacity-0 group-hover:opacity-100 transition-opacity w-2 h-2 !bg-[var(--color-primary-base)]" />
       
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-center nodrag">
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-center nodrag z-10">
         {data.label}
       </div>
-    </div>
+    </motion.div>
   );
 }
+
 

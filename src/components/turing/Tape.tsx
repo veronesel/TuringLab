@@ -3,15 +3,102 @@ import { useTMStore } from '../../store/tmStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Undo, Redo, Wand2, X, Palette } from 'lucide-react';
+import { Undo, Redo, Wand2, X, Palette, MapPin, Settings, Trash2, ChevronDown, ChevronUp, Plus, Eraser, Target } from 'lucide-react';
 import { PatternGeneratorPanel } from './PatternGeneratorPanel';
 
 type TapeSkin = 'default' | 'typewriter' | 'dots' | 'binary';
+
+const BorderPresets = [
+  { name: 'Default Theme', value: 'default', colorCode: '#3b82f6' },
+  { name: 'Red', value: 'border-red-500', colorCode: '#ef4444' },
+  { name: 'Orange', value: 'border-orange-500', colorCode: '#f97316' },
+  { name: 'Amber/Yellow', value: 'border-amber-400', colorCode: '#fbbf24' },
+  { name: 'Emerald Green', value: 'border-emerald-500', colorCode: '#10b981' },
+  { name: 'Teal/Cyan', value: 'border-cyan-400', colorCode: '#22d3ee' },
+  { name: 'Blue', value: 'border-blue-500', colorCode: '#3b82f6' },
+  { name: 'Purple', value: 'border-purple-500', colorCode: '#a855f7' },
+  { name: 'Pink', value: 'border-pink-500', colorCode: '#ec4899' },
+  { name: 'White', value: 'border-white', colorCode: '#ffffff' },
+];
+
+const TextPresets = [
+  { name: 'Default Theme', value: 'default', colorCode: '#3b82f6' },
+  { name: 'Red', value: 'text-red-400', colorCode: '#f87171' },
+  { name: 'Orange', value: 'text-orange-400', colorCode: '#fb923c' },
+  { name: 'Amber/Yellow', value: 'text-amber-300', colorCode: '#fcd34d' },
+  { name: 'Emerald Green', value: 'text-emerald-400', colorCode: '#34d399' },
+  { name: 'Teal/Cyan', value: 'text-cyan-300', colorCode: '#67e8f9' },
+  { name: 'Blue', value: 'text-blue-400', colorCode: '#60a5fa' },
+  { name: 'Purple', value: 'text-purple-400', colorCode: '#c084fc' },
+  { name: 'Pink', value: 'text-pink-400', colorCode: '#f472b6' },
+  { name: 'White', value: 'text-white', colorCode: '#ffffff' },
+];
+
+const getCellBgClass = (borderColorValue: string): string => {
+  switch (borderColorValue) {
+    case 'border-red-500': return 'bg-red-500/20';
+    case 'border-orange-500': return 'bg-orange-500/20';
+    case 'border-amber-400': return 'bg-amber-400/20';
+    case 'border-emerald-500': return 'bg-emerald-500/20';
+    case 'border-cyan-400': return 'bg-cyan-400/20';
+    case 'border-blue-500': return 'bg-blue-500/20';
+    case 'border-purple-500': return 'bg-purple-500/20';
+    case 'border-pink-500': return 'bg-pink-500/20';
+    case 'border-white': return 'bg-white/10';
+    default: return 'bg-primary-base/20';
+  }
+};
+
+interface MarkerData {
+  note: string;
+  icon?: string;
+  color?: string;
+}
+
+const MarkerIcons = ['📍', '⭐', '🚩', '🎯', '⚠️', '✅', '🔍', '💡', '⚓', '🔑'];
+
+const MarkerColors = [
+  { name: 'Blue', value: 'blue', bg: '#1e3a8a', border: '#3b82f6', text: '#eff6ff', shadow: 'rgba(59, 130, 246, 0.4)' },
+  { name: 'Red', value: 'red', bg: '#7f1d1d', border: '#ef4444', text: '#fef2f2', shadow: 'rgba(239, 68, 68, 0.4)' },
+  { name: 'Orange', value: 'orange', bg: '#7c2d12', border: '#f97316', text: '#fff7ed', shadow: 'rgba(249, 115, 22, 0.4)' },
+  { name: 'Amber', value: 'amber', bg: '#78350f', border: '#fbbf24', text: '#fef3c7', shadow: 'rgba(245, 158, 11, 0.4)' },
+  { name: 'Green', value: 'emerald', bg: '#064e3b', border: '#10b981', text: '#ecfdf5', shadow: 'rgba(16, 185, 129, 0.4)' },
+  { name: 'Teal', value: 'cyan', bg: '#164e63', border: '#22d3ee', text: '#ecfeff', shadow: 'rgba(6, 182, 212, 0.4)' },
+  { name: 'Purple', value: 'purple', bg: '#581c87', border: '#a855f7', text: '#f5f3ff', shadow: 'rgba(168, 85, 247, 0.4)' },
+  { name: 'Pink', value: 'pink', bg: '#831843', border: '#ec4899', text: '#fdf2f8', shadow: 'rgba(236, 72, 153, 0.4)' },
+  { name: 'White', value: 'white', bg: '#1e293b', border: '#ffffff', text: '#ffffff', shadow: 'rgba(255, 255, 255, 0.25)' },
+];
+
+const parseBookmark = (raw: string | undefined): MarkerData => {
+  if (!raw) return { note: '', icon: '📍', color: 'blue' };
+  try {
+    if (raw.startsWith('{') && raw.endsWith('}')) {
+      const parsed = JSON.parse(raw);
+      return {
+        note: parsed.note || '',
+        icon: parsed.icon || '📍',
+        color: parsed.color || 'blue'
+      };
+    }
+  } catch (e) {
+    // ignores
+  }
+  return {
+    note: raw,
+    icon: '📍',
+    color: 'blue'
+  };
+};
+
+const serializeBookmark = (note: string, icon: string, color: string): string => {
+  return JSON.stringify({ note, icon, color });
+};
 
 export const Tape: React.FC = () => {
   const tape = useTMStore(state => state.tape);
   const headPosition = useTMStore(state => state.headPosition);
   const status = useTMStore(state => state.status);
+  const stepCount = useTMStore(state => state.stepCount);
   const history = useTMStore(state => state.history);
   const historyIndex = useTMStore(state => state.historyIndex);
   const jumpToStep = useTMStore(state => state.jumpToStep);
@@ -24,12 +111,24 @@ export const Tape: React.FC = () => {
   const removeBookmark = useTMStore(state => state.removeBookmark);
   const symbolAliases = useTMStore(state => state.symbolAliases);
   const updateHeadPosition = useTMStore(state => state.updateHeadPosition);
+  const clearTapeAndResetHead = useTMStore(state => state.clearTapeAndResetHead);
   
   // Bulk Editing State
   const [hoveredCell, setHoveredCell] = useState<number | null>(null);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
   const updateTapeSymbol = useTMStore(state => state.updateTapeSymbol);
+
+  // Bookmark Shelf & Dialog State
+  const [isShelfExpanded, setIsShelfExpanded] = useState(false);
+  const [editingBookmark, setEditingBookmark] = useState<{
+    index: number;
+    note: string;
+    symbol: string;
+    isMarker: boolean;
+    icon: string;
+    color: string;
+  } | null>(null);
   
   const selectedIndices = (() => {
       if (selectionStart === null || selectionEnd === null) return [];
@@ -96,21 +195,41 @@ export const Tape: React.FC = () => {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleBookmarkToggle = (index: number, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (bookmarks[index] !== undefined) {
-      removeBookmark(index);
-    } else {
-      const note = window.prompt("Enter a note for this bookmark (or leave empty):", "");
-      if (note !== null) {
-        addBookmark(index, note.trim());
-      }
-    }
-  };
   const [showPatternDialog, setShowPatternDialog] = useState(false);
   const [customPattern, setCustomPattern] = useState("");
   const [infiniteMode, setInfiniteMode] = useState(true);
   const [tapeSkin, setTapeSkin] = useState<TapeSkin>('default');
+  const [scrollOffset, setScrollOffset] = useState(0);
+
+  // Auto-recenter on headPosition or isRunning change
+  useEffect(() => {
+    setScrollOffset(0);
+  }, [headPosition]);
+
+  useEffect(() => {
+    if (isRunning) {
+      setScrollOffset(0);
+    }
+  }, [isRunning]);
+
+  const [customBorderColor, setCustomBorderColor] = useState<string>(() => {
+    return localStorage.getItem('tm-tape-border-color') || 'default';
+  });
+  const [customTextColor, setCustomTextColor] = useState<string>(() => {
+    return localStorage.getItem('tm-tape-text-color') || 'default';
+  });
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('tm-tape-border-color', customBorderColor);
+  }, [customBorderColor]);
+
+  useEffect(() => {
+    localStorage.setItem('tm-tape-text-color', customTextColor);
+  }, [customTextColor]);
+
+  const activeBorderPreset = BorderPresets.find(p => p.value === customBorderColor) || BorderPresets[0];
+  const activeTextColorPreset = TextPresets.find(p => p.value === customTextColor) || TextPresets[0];
 
   const handleInjectPattern = (pattern: string) => {
     injectTapePattern(pattern);
@@ -119,12 +238,14 @@ export const Tape: React.FC = () => {
   };
 
   // Generate an array of cells
-  const visibleRange = 15; // 15 cells left and right
+  // Virtual center shifted by scroll offset (56px per cell: 52px width + 4px gap)
+  const scrolledCenterIndex = headPosition + Math.round(-scrollOffset / 56);
+  const visibleRange = 25; // Constant buffer window centered on virtual scrolling viewpoint
   const cells = [];
   
   if (infiniteMode) {
-    const minCell = headPosition - visibleRange;
-    const maxCell = headPosition + visibleRange;
+    const minCell = scrolledCenterIndex - visibleRange;
+    const maxCell = scrolledCenterIndex + visibleRange;
     for (let i = minCell; i <= maxCell; i++) {
       cells.push({ index: i, value: tape[i] || '_' });
     }
@@ -144,18 +265,27 @@ export const Tape: React.FC = () => {
       endIdx = startIdx + 9;
     }
 
-    for (let i = startIdx; i <= endIdx; i++) {
+    // Expand render bounds dynamically with scroll position to cover the viewport
+    const minRender = Math.min(startIdx, scrolledCenterIndex - visibleRange);
+    const maxRender = Math.max(endIdx, scrolledCenterIndex + visibleRange);
+
+    for (let i = minRender; i <= maxRender; i++) {
        cells.push({ index: i, value: tape[i] || '_' });
     }
   }
 
-  // Auto-scroll effect or layout shifting is handled by the sliding track
-  
   return (
-    <div className="flex-1 flex flex-col relative select-none overflow-hidden" style={{ backgroundImage: 'radial-gradient(var(--color-border-main) 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
-      <div className="absolute inset-0 bg-bg-base/90"></div>
+    <div className="flex-1 flex flex-col relative select-none overflow-hidden border-2 border-primary-base/20 rounded-xl bg-bg-panel shadow-[0_4px_30px_rgba(0,0,0,0.3)] hover:border-primary-base/40 transition-all duration-500">
+      {/* Background radial grid, color-mixed to support any active theme */}
+      <div 
+        className="absolute inset-0 opacity-25 pointer-events-none" 
+        style={{ 
+          backgroundImage: 'radial-gradient(color-mix(in srgb, var(--color-primary-base) 25%, transparent) 1px, transparent 1px)', 
+          backgroundSize: '24px 24px' 
+        }} 
+      />
 
-      <div className="w-full flex justify-between items-center px-4 py-3 relative z-10">
+      <div className="w-full flex justify-between items-center px-4 py-3 relative z-30">
          <div className="flex items-center gap-2">
            <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest">History Scrubber</span>
            <button onClick={undo} disabled={historyIndex <= 0 || isRunning} className="p-1 rounded bg-bg-element hover:bg-border-active disabled:opacity-50 transition-colors" title="Undo Step">
@@ -172,6 +302,27 @@ export const Tape: React.FC = () => {
            >
              {infiniteMode ? 'Infinite Mode' : 'Fixed Tape'}
            </button>
+           <button 
+             onClick={clearTapeAndResetHead}
+             className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold uppercase border bg-red-950/20 hover:bg-red-900/35 border-red-500/20 text-red-400 transition-colors cursor-pointer"
+             title="Clear entire tape and reset head position to 0"
+           >
+             <Eraser size={11} className="shrink-0 text-red-400" />
+             <span>Clear Tape</span>
+           </button>
+           <button 
+             onClick={() => setScrollOffset(0)}
+             className={clsx(
+               "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold uppercase transition-all border cursor-pointer",
+               scrollOffset === 0 
+                 ? "bg-primary-base/5 text-primary-base/50 border-primary-base/15 opacity-70 cursor-default select-none pointer-events-none" 
+                 : "bg-primary-base/20 hover:bg-primary-base/30 border-primary-base/40 text-primary-base shadow-[0_0_8px_rgba(var(--color-primary-base),0.25)]"
+             )}
+             title="Automatically snap and center the viewport on the current tape head position"
+           >
+             <Target size={11} className={clsx("shrink-0", scrollOffset !== 0 && "animate-pulse")} />
+             <span>Snap to Head</span>
+           </button>
          </div>
          <div className="flex items-center gap-3">
            <div className="flex items-center gap-1 bg-bg-element rounded px-2 py-1 border border-border-main">
@@ -187,6 +338,108 @@ export const Tape: React.FC = () => {
                 <option value="binary" className="bg-bg-panel">Binary</option>
               </select>
            </div>
+
+           {tapeSkin === 'default' && (
+             <div className="relative">
+               <button
+                 onClick={() => setIsColorPickerOpen(!isColorPickerOpen)}
+                 className={clsx(
+                   "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold uppercase border transition-all cursor-pointer",
+                   isColorPickerOpen 
+                     ? "bg-primary-base/20 text-primary-base border-primary-base/40 shadow-[0_0_10px_rgba(var(--color-primary-base),0.2)]" 
+                     : (customBorderColor !== 'default' || customTextColor !== 'default')
+                       ? "bg-primary-base/10 text-primary-base border-primary-base/25 hover:bg-primary-base/20"
+                       : "bg-bg-element text-text-muted border-border-main hover:text-text-primary hover:border-border-active"
+                 )}
+                 title="Customize Cell Visuals"
+               >
+                 <Palette size={10} className={clsx(
+                   "transition-transform",
+                   (customBorderColor !== 'default' || customTextColor !== 'default') && "animate-pulse text-primary-base"
+                 )} />
+                 <span>Colors</span>
+               </button>
+
+               {isColorPickerOpen && (
+                 <>
+                   {/* Backdrop to close listbox/popover */}
+                   <div className="fixed inset-0 z-40" onClick={() => setIsColorPickerOpen(false)} />
+                   
+                   <div className="absolute right-0 mt-1.5 w-64 bg-bg-panel border border-border-main/80 rounded-lg shadow-2xl p-3.5 flex flex-col gap-4 z-50 font-sans">
+                     <div className="flex justify-between items-center border-b border-border-main/40 pb-2">
+                       <span className="text-[10px] font-extrabold uppercase tracking-widest text-text-muted">Cell Design Picker</span>
+                       <button 
+                         onClick={() => {
+                           setCustomBorderColor('default');
+                           setCustomTextColor('default');
+                         }}
+                         className="text-[9px] font-bold uppercase tracking-widest bg-bg-element hover:bg-border-active text-text-faint hover:text-text-primary px-2 py-0.5 rounded transition-colors"
+                       >
+                         Reset
+                       </button>
+                     </div>
+
+                     {/* Border Color Pick */}
+                     <div className="flex flex-col gap-2">
+                       <span className="text-[10px] font-extrabold uppercase tracking-wide text-text-muted flex justify-between">
+                         <span>Cell Border</span>
+                         <span className="text-[8px] text-text-faint normal-case">Predefined sets</span>
+                       </span>
+                       <div className="grid grid-cols-5 gap-2">
+                         {BorderPresets.map(preset => (
+                           <button
+                             key={preset.value}
+                             onClick={() => setCustomBorderColor(preset.value)}
+                             className={clsx(
+                               "h-6 w-full rounded border flex items-center justify-center transition-all relative hover:scale-110",
+                               customBorderColor === preset.value ? "border-white ring-2 ring-primary-base" : "border-border-main/50"
+                             )}
+                             style={{ backgroundColor: '#0B0F17' }}
+                             title={preset.name}
+                           >
+                             <div 
+                               className="w-2.5 h-2.5 rounded-full" 
+                               style={{ 
+                                 backgroundColor: preset.colorCode === '#ffffff' ? '#ffffff' : preset.colorCode,
+                                 boxShadow: `0 0 6px ${preset.colorCode}` 
+                                }} 
+                             />
+                           </button>
+                         ))}
+                       </div>
+                     </div>
+
+                     {/* Text Color Pick */}
+                     <div className="flex flex-col gap-2">
+                       <span className="text-[10px] font-extrabold uppercase tracking-wide text-text-muted flex justify-between">
+                         <span>Cell Text</span>
+                         <span className="text-[8px] text-text-faint normal-case">Predefined sets</span>
+                       </span>
+                       <div className="grid grid-cols-5 gap-2">
+                         {TextPresets.map(preset => (
+                           <button
+                             key={preset.value}
+                             onClick={() => setCustomTextColor(preset.value)}
+                             className={clsx(
+                               "h-6 w-full rounded border flex items-center justify-center transition-all relative hover:scale-110",
+                               customTextColor === preset.value ? "border-white ring-2 ring-primary-base" : "border-border-main/50"
+                             )}
+                             style={{ backgroundColor: '#0B0F17' }}
+                             title={preset.name}
+                           >
+                             <span className="text-xs font-black shadow-sm" style={{ color: preset.colorCode }}>
+                               A
+                             </span>
+                           </button>
+                         ))}
+                       </div>
+                     </div>
+                   </div>
+                 </>
+               )}
+             </div>
+           )}
+
            <span className="text-[9px] text-primary-base font-mono bg-bg-element px-2 py-1 rounded border border-border-main">STEP {(historyIndex).toString().padStart(4, '0')}</span>
          </div>
       </div>
@@ -207,44 +460,118 @@ export const Tape: React.FC = () => {
       <AnimatePresence>
         {(status === 'accepted' || status === 'error' || status === 'rejected') && (
           <motion.div
-             initial={{ opacity: 0, y: -10 }}
+             initial={{ opacity: 0, y: -5 }}
              animate={{ opacity: 1, y: 0 }}
-             exit={{ opacity: 0, y: -10 }}
-             className="absolute left-6 top-12 z-50 pointer-events-none"
+             exit={{ opacity: 0, y: -5 }}
+             className="absolute left-4 top-[74px] z-50 pointer-events-none"
           >
              {status === 'accepted' && (
-               <div className="bg-green-500/20 border border-green-500/50 text-green-600 dark:text-green-400 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded shadow-lg flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                 Simulation Accepted
-               </div>
+                <div className="bg-green-500/10 backdrop-blur-sm border border-green-500/40 text-green-600 dark:text-green-400 text-[9px] uppercase font-bold tracking-widest px-2.5 py-1 rounded shadow-md flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_#22c55e]"></div>
+                  Simulation Accepted
+                </div>
              )}
              {(status === 'rejected' || status === 'error') && (
-               <div className="bg-red-500/20 border border-red-500/50 text-red-600 dark:text-red-400 text-[10px] uppercase font-bold tracking-widest px-3 py-1.5 rounded shadow-lg flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-                 {status === 'rejected' ? 'Simulation Rejected' : 'Simulation Error'}
-               </div>
+                <div className="bg-red-500/10 backdrop-blur-sm border border-red-500/40 text-red-600 dark:text-red-400 text-[9px] uppercase font-bold tracking-widest px-2.5 py-1 rounded shadow-md flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_#ef4444]"></div>
+                  {status === 'rejected' ? 'Simulation Rejected' : 'Simulation Error'}
+                </div>
              )}
           </motion.div>
         )}
       </AnimatePresence>
       
       {/* Tape Track */}
-      <div className="w-full flex justify-center items-center flex-1 mt-6 relative z-20">
+      <div 
+        className="w-full flex justify-center items-center flex-1 mt-6 relative z-20 cursor-all-scroll"
+        onWheel={(e) => {
+          if (isRunning) return;
+          // Capture scroll inputs across both mouse-wheel orientations
+          const delta = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+          setScrollOffset(prev => prev - delta);
+        }}
+      >
+
+        {/* Horizontal feed ribbon backdrop to emphasize tape path */}
+        <div 
+          className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[76px] border-y-2 bg-bg-surface/80 pointer-events-none z-10" 
+          style={{ 
+            borderColor: customBorderColor !== 'default' 
+              ? `color-mix(in srgb, ${activeBorderPreset.colorCode} 25%, transparent)` 
+              : 'color-mix(in srgb, var(--color-primary-base) 15%, transparent)' 
+          }}
+        />
+
+        {/* Central Scan Cohort Highlight Focus Aperture */}
+        <motion.div 
+          key={`aperture-${headPosition}`}
+          initial={{ scale: 0.9, opacity: 0.8 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 450, damping: 20 }}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60px] h-[80px] border-2 rounded-lg z-30 pointer-events-none"
+          style={{ 
+            borderColor: customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)',
+            boxShadow: customBorderColor !== 'default' 
+              ? `0 0 20px color-mix(in srgb, ${activeBorderPreset.colorCode} 40%, transparent)` 
+              : '0 0 20px color-mix(in srgb, var(--color-primary-base) 40%, transparent)',
+            backgroundColor: customBorderColor !== 'default' 
+              ? `color-mix(in srgb, ${activeBorderPreset.colorCode} 5%, transparent)` 
+              : 'color-mix(in srgb, var(--color-primary-base) 5%, transparent)'
+          }}
+        />
 
         {/* Head Indicator Triangle (placed ABOVE the tape, pointing down) */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[calc(50%+48px)] z-30 flex flex-col items-center">
+        <motion.div 
+          key={`pointer-${headPosition}`}
+          initial={{ y: -6, opacity: 0.8 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 400, damping: 15 }}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[calc(50%+48px)] z-30 flex flex-col items-center"
+        >
           <div className="flex gap-2 items-center mb-1">
-            <div className="text-[10px] font-mono font-bold text-bg-base bg-primary-base px-2 py-0.5 rounded shadow-[0_0_10px_var(--color-primary-base)] tracking-widest">HEAD: {headPosition}</div>
+            <button 
+              onClick={() => setScrollOffset(0)}
+              disabled={scrollOffset === 0}
+              className={twMerge(
+                clsx(
+                  "text-[10px] font-mono font-bold text-bg-base px-2 py-[3px] rounded tracking-widest transition-all duration-300 select-none flex items-center gap-1.5",
+                  scrollOffset !== 0 ? "hover:scale-105 cursor-pointer active:scale-95 shadow-md opacity-100 animate-pulse" : "opacity-95 cursor-default"
+                )
+              )}
+              style={{
+                backgroundColor: customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)',
+                boxShadow: customBorderColor !== 'default' ? `0 0 10px ${activeBorderPreset.colorCode}` : '0 0 10px var(--color-primary-base)'
+              }}
+              title={scrollOffset !== 0 ? "Click to recenter tape on the head pointer" : undefined}
+            >
+              HEAD: {headPosition}
+              {scrollOffset !== 0 && (
+                <span className="text-[8px] bg-bg-panel text-text-primary px-1 rounded-sm font-sans font-extrabold uppercase pointer-events-none">
+                  Recenter
+                </span>
+              )}
+            </button>
             <button
               onClick={() => setShowPatternDialog(true)}
-              className="p-1 min-w-[20px] h-[20px] flex items-center justify-center rounded bg-primary-base/20 hover:bg-primary-base/40 text-primary-base transition-colors"
+              className="p-1 min-w-[20px] h-[20px] flex items-center justify-center rounded transition-colors"
+              style={{
+                color: customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)',
+                backgroundColor: customBorderColor !== 'default' 
+                  ? `color-mix(in srgb, ${activeBorderPreset.colorCode} 20%, transparent)` 
+                  : 'color-mix(in srgb, var(--color-primary-base) 20%, transparent)'
+              }}
               title="Inject Pattern at Head"
             >
               <Wand2 size={10} />
             </button>
           </div>
-          <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[10px] border-t-primary-base -mt-[1px]"></div>
-        </div>
+          <div 
+            className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[10px] -mt-[1px]"
+            style={{
+              borderTopColor: customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)'
+            }}
+          ></div>
+        </motion.div>
 
         {/* Pattern Generator Panel */}
         <PatternGeneratorPanel isOpen={showPatternDialog} onClose={() => setShowPatternDialog(false)} />
@@ -288,7 +615,7 @@ export const Tape: React.FC = () => {
         <div className="absolute left-1/2 top-1/2 -translate-y-1/2 w-0 h-16 pointer-events-none">
           <motion.div 
             className="absolute top-0 pointer-events-auto"
-            animate={{ x: -(headPosition * 56) }} // 52px width + 4px gap = 56px per cell
+            animate={{ x: -(headPosition * 56) + scrollOffset }} // 52px width + 4px gap = 56px per cell + horizontal user scroll offset
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
           >
            {/* Ghost Head Indicator */}
@@ -305,7 +632,12 @@ export const Tape: React.FC = () => {
            {cells.map(cell => {
              const isHead = cell.index === headPosition;
              const isBookmarked = bookmarks[cell.index] !== undefined;
-             const bookmarkNote = bookmarks[cell.index];
+             const bookmarkNoteRaw = bookmarks[cell.index];
+              const parsedBm = parseBookmark(bookmarkNoteRaw);
+              const bookmarkNote = parsedBm.note;
+              const bookmarkIcon = parsedBm.icon || '📍';
+              const bookmarkColor = parsedBm.color || 'blue';
+              const colorConfig = MarkerColors.find(c => c.value === bookmarkColor) || MarkerColors[0];
              
              const isHovered = hoveredCell === cell.index && !isHead && !isRunning;
              const isSelected = selectedIndices.includes(cell.index);
@@ -339,12 +671,42 @@ export const Tape: React.FC = () => {
                  skinStyles += " flex-col relative";
                  content = (
                     <>
-                       <div className="absolute top-1 text-[8px] uppercase tracking-widest text-text-muted font-sans font-bold opacity-70 group-hover:opacity-100 transition-opacity truncate w-[90%] text-center">
+                       <div className="absolute top-1 text-[8px] uppercase tracking-widest text-text-muted font-sans font-bold transition-opacity truncate w-[90%] text-center">
                           {aliasText}
                        </div>
                        <div className="mt-2">{content}</div>
                     </>
                  );
+             }
+
+             const cellBorderClass = (tapeSkin === 'default')
+               ? (isHead 
+                   ? (customBorderColor !== 'default' ? customBorderColor : 'border-primary-base')
+                   : (cell.value !== '_' ? (customBorderColor !== 'default' ? customBorderColor : 'border-primary-base') : '')
+                 )
+               : '';
+
+             const cellTextClass = (tapeSkin === 'default')
+               ? (isHead 
+                   ? (customTextColor !== 'default' ? customTextColor : 'text-primary-base')
+                   : (cell.value !== '_' ? (customTextColor !== 'default' ? customTextColor : 'text-primary-base') : '')
+                 )
+               : '';
+
+             const cellBgClass = (tapeSkin === 'default')
+               ? (isHead
+                   ? (customBorderColor !== 'default' ? getCellBgClass(customBorderColor) : 'bg-primary-base/30')
+                   : (cell.value !== '_' ? getCellBgClass(customBorderColor) : '')
+                 )
+               : '';
+
+             const cellStyle: React.CSSProperties = {};
+             if (isHead) {
+               const activeColor = customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)';
+               cellStyle.boxShadow = `0 0 20px color-mix(in srgb, ${activeColor} 45%, transparent), 0 0 0 4px color-mix(in srgb, ${activeColor} 20%, transparent)`;
+             } else if (isHovered) {
+               const activeColor = customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)';
+               cellStyle.boxShadow = `0 0 12px color-mix(in srgb, ${activeColor} 25%, transparent)`;
              }
 
              return (
@@ -358,7 +720,16 @@ export const Tape: React.FC = () => {
                   onPointerLeave={() => setHoveredCell(null)}
                   onClick={(e) => {
                      if (selectedIndices.length <= 1) {
-                        handleBookmarkToggle(cell.index, e);
+                        e.stopPropagation();
+                        const parsed = parseBookmark(bookmarks[cell.index]);
+                        setEditingBookmark({
+                          index: cell.index,
+                          note: parsed.note,
+                          symbol: tape[cell.index] || '_',
+                          isMarker: bookmarks[cell.index] !== undefined,
+                          icon: parsed.icon || '📍',
+                          color: parsed.color || 'blue'
+                        });
                      }
                   }}
                   onDragOver={(e) => {
@@ -377,22 +748,50 @@ export const Tape: React.FC = () => {
                   }}
                >
                  <div
+                    style={cellStyle}
                     className={twMerge(
                       clsx(
                         "w-full h-full flex items-center justify-center transition-all duration-300 pointer-events-none rounded",
                         {
-                          "border-2 border-primary-base text-primary-base shadow-[0_0_25px_var(--color-primary-base)] ring-4 ring-primary-base/20 relative z-20 scale-110 rounded-lg bg-primary-base/10": isHead,
+                          "bg-bg-panel border-2 relative z-20 scale-110 rounded-lg": isHead,
                           "animate-pulse saturate-150": isHead && isRunning,
-                          "bg-bg-panel border border-border-main text-text-faint": !isHead && cell.value === '_' && tapeSkin === 'default',
-                          "bg-bg-element border border-border-active text-primary-base": !isHead && cell.value !== '_' && tapeSkin === 'default',
-                          "opacity-80 ring-2 ring-primary-base/50 shadow-[0_0_15px_var(--color-primary-base)] z-10": isHovered,
+                          "bg-bg-panel border border-border-main/90 text-text-muted font-medium shadow-sm": !isHead && cell.value === '_' && tapeSkin === 'default',
+                          "bg-bg-panel font-black border-2 shadow-md": !isHead && cell.value !== '_' && tapeSkin === 'default',
+                          "ring-2 ring-primary-base/50 z-10": isHovered,
                           "ring-2 ring-blue-500 bg-blue-500/20 z-10": isSelected && !isHead
                         },
-                        skinStyles
+                        skinStyles,
+                        cellBorderClass,
+                        cellTextClass,
+                        cellBgClass
                       )
                     )}
                  >
-                   {content}
+                   <AnimatePresence mode="popLayout" initial={false}>
+                      <motion.div
+                        key={cell.value}
+                        initial={{ scale: 0.6, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.6, opacity: 0 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="flex items-center justify-center w-full h-full relative"
+                      >
+                        {content}
+                        {isHead && isRunning && (
+                          <motion.div 
+                            key={`ping-${stepCount}`}
+                            initial={{ opacity: 0.8, scale: 0.8 }}
+                            animate={{ opacity: 0, scale: 1.6 }}
+                            transition={{ duration: 0.5, ease: "easeOut" }}
+                            className="absolute inset-0 rounded pointer-events-none z-10"
+                            style={{
+                              boxShadow: `0 0 20px ${customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)'}`,
+                              border: `2px solid ${customBorderColor !== 'default' ? activeBorderPreset.colorCode : 'var(--color-primary-base)'}`
+                            }}
+                          />
+                        )}
+                      </motion.div>
+                    </AnimatePresence>
                  </div>
                  
                  {/* Bookmark Indicator */}
@@ -408,12 +807,28 @@ export const Tape: React.FC = () => {
                         // Jump head to this bookmark
                         updateHeadPosition(cell.index);
                      }}
-                     className="absolute -bottom-4 w-3 h-3 rotate-45 bg-[#3b82f6] shadow-[0_0_5px_rgba(59,130,246,0.6)] cursor-grab active:cursor-grabbing hover:scale-125 transition-transform" 
-                     title={bookmarkNote ? `${bookmarkNote} (Click to jump head, Drag to move)` : 'Bookmarked (Click to jump head, Drag to move)'}
-                   />
-                 )}
-                 {isBookmarked && bookmarkNote && (
-                   <div className="absolute top-[calc(100%+8px)] whitespace-nowrap text-[8px] uppercase tracking-widest text-[#3b82f6] font-bold opacity-75 hidden group-hover:block transition-opacity pointer-events-none bg-bg-panel px-1 rounded border border-border-main z-30">
+                     style={{
+                        backgroundColor: colorConfig.bg,
+                        borderColor: colorConfig.border,
+                        color: colorConfig.text,
+                        boxShadow: `0 0 6px ${colorConfig.shadow}`
+                      }}
+                      className={clsx(
+                        "absolute -bottom-5 left-1/2 -translate-x-1/2 z-30 select-none",
+                        "flex items-center gap-0.5 px-1 pb-[1.5px] pt-[0.5px] rounded border text-[9px] font-bold shadow-md cursor-grab active:cursor-grabbing hover:scale-110 transition-all w-max max-w-[50px] overflow-hidden"
+                      )}
+                     title={bookmarkNote ? `${bookmarkIcon} ${bookmarkNote} (Click to jump, Drag to move)` : `${bookmarkIcon} Bookmarked (Click to jump, Drag to move)`}
+                    >
+                      <span className="shrink-0 text-[10px] leading-none mb-[1.5px]">{bookmarkIcon}</span>
+                      {bookmarkNote && (
+                        <span className="truncate font-sans text-[7.5px] tracking-tight shrink leading-none mb-[1.5px] max-w-[28px]">
+                          {bookmarkNote}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {isBookmarked && bookmarkNote && (
+                   <div className="absolute top-[calc(100%+8px)] whitespace-nowrap text-[8px] uppercase tracking-widest text-[#3b82f6] font-bold hidden group-hover:block transition-opacity pointer-events-none bg-bg-panel px-1 rounded border border-border-main z-30">
                      {bookmarkNote}
                    </div>
                  )}
@@ -426,6 +841,339 @@ export const Tape: React.FC = () => {
           </motion.div>
         </div>
       </div>
+
+      {/* Bookmarks Manager Footer Panel */}
+      <div className="w-full bg-bg-panel border-t border-border-main shrink-0 mt-auto relative z-30 select-none">
+         <div 
+           onClick={() => setIsShelfExpanded(!isShelfExpanded)}
+           className="px-4 py-2 flex justify-between items-center cursor-pointer hover:bg-bg-panel/60 transition-colors"
+         >
+           <div className="flex items-center gap-2">
+             <MapPin size={12} className={clsx("transition-transform duration-300", Object.keys(bookmarks).length > 0 ? "text-primary-base animate-pulse" : "text-text-muted")} />
+             <span className="text-[10px] font-bold uppercase tracking-wider text-text-primary">
+               Visual Markers & Bookmarks Map ({Object.keys(bookmarks).length})
+             </span>
+           </div>
+
+           <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+             {/* Quick Actions inside title bar */}
+             <button
+               onClick={() => {
+                 setEditingBookmark({
+                   index: headPosition,
+                   note: parseBookmark(bookmarks[headPosition]).note, icon: parseBookmark(bookmarks[headPosition]).icon || '📍', color: parseBookmark(bookmarks[headPosition]).color || 'blue',
+                   symbol: tape[headPosition] || '_',
+                   isMarker: true
+                 });
+               }}
+               className="px-2 py-0.5 bg-primary-base/10 hover:bg-primary-base/20 border border-primary-base/30 text-primary-base text-[9px] font-bold uppercase rounded transition-colors"
+               title="Bookmark Head Position"
+             >
+               + Marker at Head
+             </button>
+
+             {Object.keys(bookmarks).length > 0 && (
+               <button
+                 onClick={() => {
+                   if (window.confirm("Are you sure you want to clear all visual markers?")) {
+                     Object.keys(bookmarks).forEach(idxStr => {
+                       removeBookmark(parseInt(idxStr, 10));
+                     });
+                   }
+                 }}
+                 className="px-2 py-0.5 bg-red-950/20 hover:bg-red-900/30 border border-red-500/20 text-red-400 text-[9px] font-bold uppercase rounded transition-colors"
+                 title="Clear All Markers"
+               >
+                 Clear All
+               </button>
+             )}
+
+             <button 
+               onClick={() => setIsShelfExpanded(!isShelfExpanded)}
+               className="text-text-muted hover:text-text-primary transition-colors h-5 w-5 flex items-center justify-center rounded"
+             >
+               {isShelfExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+             </button>
+           </div>
+         </div>
+
+         <AnimatePresence initial={false}>
+            {isShelfExpanded && (
+               <motion.div
+                 initial={{ height: 0, opacity: 0 }}
+                 animate={{ height: "auto", opacity: 1 }}
+                 exit={{ height: 0, opacity: 0 }}
+                 className="overflow-hidden border-t border-[#161B22]/50 font-sans"
+               >
+                 <div className="px-4 py-3 bg-bg-panel flex flex-col gap-2 max-h-[140px] overflow-y-auto">
+                   {Object.keys(bookmarks).length === 0 ? (
+                     <div className="text-center py-4 text-xs text-text-faint italic flex flex-col items-center gap-1 font-sans">
+                       <span>No visual markers added to the tape yet.</span>
+                       <span className="text-[10px] text-text-muted">
+                         Click on any cell of the tape or use the "+ Marker at Head" button to add landmarks.
+                       </span>
+                     </div>
+                   ) : (
+                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 font-sans">
+                       {Object.keys(bookmarks)
+                         .map(Number)
+                         .sort((a, b) => a - b)
+                         .map(idx => {
+                           const raw = bookmarks[idx];
+                            const parsed = parseBookmark(raw);
+                            const note = parsed.note;
+                            const icon = parsed.icon || '📍';
+                            const color = parsed.color || 'blue';
+                            const colorConfig = MarkerColors.find(c => c.value === color) || MarkerColors[0];
+                           const isAtHead = idx === headPosition;
+                           const symbolVal = tape[idx] || '_';
+                           
+                           return (
+                             <div 
+                               key={idx}
+                               className={clsx(
+                                 "flex items-center justify-between p-1.5 rounded border text-xs transition-all",
+                                 isAtHead 
+                                   ? "bg-primary-base/5 border-primary-base shadow-[0_0_8px_rgba(var(--color-primary-base),0.1)]" 
+                                   : "bg-bg-panel/60 border-border-main hover:border-border-active"
+                               )}
+                             >
+                               {/* Jump Left Click */}
+                               <div 
+                                 onClick={() => {
+                                   updateHeadPosition(idx);
+                                 }}
+                                 className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                                 title="Click to jump Head here"
+                               >
+                                 <div className={clsx(
+                                   "w-5 h-5 flex items-center justify-center rounded text-[10px] font-mono font-bold shrink-0",
+                                   isAtHead ? "bg-primary-base text-bg-base" : "bg-bg-element text-text-primary"
+                                 )}>
+                                   {idx}
+                                 </div>
+                                 
+                                 <div className="flex flex-col min-w-0">
+                                   <div className="flex items-center gap-1.5">
+                                      <span className="px-1 bg-border-main text-[9px] font-mono rounded text-text-faint shrink-0 leading-none py-0.5">
+                                        {symbolVal === '_' ? '空' : symbolVal}
+                                      </span>
+                                      {isAtHead && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-primary-base animate-pulse shrink-0" title="Active Head is here" />
+                                      )}
+                                   </div>
+                                   <p className="text-[10px] text-text-primary truncate font-medium mt-0.5" title={note || `Cell #${idx}`}>
+                                     {note || <span className="text-text-faint italic font-normal">No Label</span>}
+                                   </p>
+                                 </div>
+                               </div>
+
+                               {/* Action Items */}
+                               <div className="flex items-center gap-1 pl-1 shrink-0 font-sans">
+                                 <button
+                                   onClick={() => {
+                                     setEditingBookmark({
+                                       index: idx,
+                                       note: parseBookmark(bookmarks[idx]).note, icon: parseBookmark(bookmarks[idx]).icon || '📍', color: parseBookmark(bookmarks[idx]).color || 'blue',
+                                       symbol: tape[idx] || '_',
+                                       isMarker: true
+                                     });
+                                   }}
+                                   className="p-1 hover:text-primary-base text-text-faint transition-colors"
+                                   title="Edit cell & marker"
+                                 >
+                                   <Settings size={10} />
+                                 </button>
+                                 <button
+                                   onClick={() => removeBookmark(idx)}
+                                   className="p-1 hover:text-red-400 text-text-faint transition-colors"
+                                   title="Remove marker"
+                                 >
+                                   <Trash2 size={10} />
+                                 </button>
+                               </div>
+                             </div>
+                           );
+                         })}
+                     </div>
+                   )}
+                 </div>
+               </motion.div>
+            )}
+         </AnimatePresence>
+      </div>
+
+      {/* Bookmark / Cell Configuration Modal */}
+      <AnimatePresence>
+        {editingBookmark && (
+           <div className="absolute inset-0 z-50 flex items-center justify-center bg-bg-base/70 backdrop-blur-sm font-sans">
+             <motion.div
+               initial={{ opacity: 0, scale: 0.95 }}
+               animate={{ opacity: 1, scale: 1 }}
+               exit={{ opacity: 0, scale: 0.95 }}
+               className="w-[320px] bg-bg-panel border border-border-main rounded-lg shadow-2xl p-4 flex flex-col gap-4 font-sans"
+             >
+               <div className="flex justify-between items-center border-b border-border-main pb-2">
+                 <div className="flex items-center gap-2">
+                   <MapPin size={14} className="text-primary-base" />
+                   <span className="text-xs font-bold uppercase tracking-wider text-text-primary">Configure Cell #{editingBookmark.index}</span>
+                 </div>
+                 <button 
+                   onClick={() => setEditingBookmark(null)}
+                   className="text-text-muted hover:text-text-primary transition-colors hover:scale-110 duration-100 h-5 w-5 flex items-center justify-center rounded"
+                 >
+                   <X size={14} />
+                 </button>
+               </div>
+
+               <div className="flex flex-col gap-3">
+                 {/* Symbol edit */}
+                 <div className="flex flex-col gap-1">
+                   <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Cell Symbol</label>
+                   <div className="flex gap-2">
+                     <input 
+                       type="text"
+                       maxLength={1}
+                       value={editingBookmark.symbol === '_' ? '' : editingBookmark.symbol}
+                       onChange={(e) => {
+                         const val = e.target.value || '_';
+                         setEditingBookmark({
+                           ...editingBookmark,
+                           symbol: val
+                         });
+                       }}
+                       placeholder="Blank (_)"
+                       className="w-16 px-2 py-1 bg-bg-element border border-border-main rounded text-center text-sm font-mono text-text-primary outline-none focus:border-primary-base"
+                     />
+                     <span className="text-[10px] text-text-faint self-center">Single character (or blank)</span>
+                   </div>
+                 </div>
+
+                 {/* Bookmark toggle and note */}
+                 <div className="flex flex-col gap-2 mt-1">
+                   <div className="flex items-center gap-2">
+                     <input 
+                       type="checkbox"
+                       id="is-marker-cb"
+                       checked={editingBookmark.isMarker}
+                       onChange={(e) => {
+                         setEditingBookmark({
+                           ...editingBookmark,
+                           isMarker: e.target.checked
+                         });
+                       }}
+                       className="rounded border-border-main bg-bg-element text-primary-base focus:ring-primary-base cursor-pointer"
+                     />
+                     <label htmlFor="is-marker-cb" className="text-[10px] font-bold uppercase tracking-wider text-text-muted cursor-pointer select-none">
+                       Place Visual Marker / Bookmark
+                     </label>
+                   </div>
+
+                   {editingBookmark.isMarker && (
+                     <div className="flex flex-col gap-1 pl-5">
+                       <label className="text-[9px] font-semibold text-text-faint">Marker Label/Note (Optional)</label>
+                       <input 
+                         type="text"
+                         value={editingBookmark.note}
+                         onChange={(e) => {
+                           setEditingBookmark({
+                             ...editingBookmark,
+                             note: e.target.value
+                           });
+                         }}
+                         placeholder="e.g. Array Start, Pointer A..."
+                         className="px-2 py-1 bg-bg-element border border-border-main rounded text-xs text-text-primary outline-none focus:border-primary-base w-full"
+                        />
+
+                        {/* Distinct Icon Picker */}
+                        <div className="flex flex-col gap-1 mt-3">
+                          <label className="text-[9px] font-semibold text-text-faint">Select Marker Icon</label>
+                          <div className="flex flex-wrap gap-1">
+                            {MarkerIcons.map(iconSymbol => (
+                              <button
+                                key={iconSymbol}
+                                type="button"
+                                onClick={() => {
+                                  setEditingBookmark({
+                                    ...editingBookmark,
+                                    icon: iconSymbol
+                                  });
+                                }}
+                                className={clsx(
+                                  "w-6 h-6 flex items-center justify-center rounded text-sm hover:scale-115 active:scale-95 transition-all",
+                                  editingBookmark.icon === iconSymbol ? "bg-primary-base/20 border border-primary-base" : "bg-bg-element border border-border-main/40"
+                                )}
+                              >
+                                {iconSymbol}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Distinct Color Picker */}
+                        <div className="flex flex-col gap-1 mt-3">
+                          <label className="text-[9px] font-semibold text-text-faint">Select Badge Color</label>
+                          <div className="grid grid-cols-5 gap-1.5">
+                            {MarkerColors.map(col => (
+                              <button
+                                key={col.value}
+                                type="button"
+                                onClick={() => {
+                                  setEditingBookmark({
+                                    ...editingBookmark,
+                                    color: col.value
+                                  });
+                                }}
+                                className={clsx(
+                                  "h-5 rounded text-[8px] font-bold uppercase transition-all flex items-center justify-center border text-center font-sans",
+                                  editingBookmark.color === col.value ? "ring-2 ring-primary-base border-white" : "border-transparent"
+                                )}
+                                style={{
+                                  backgroundColor: col.bg,
+                                  color: col.text
+                                }}
+                                title={col.name}
+                              >
+                                {col.name.slice(0, 3)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                   )}
+                 </div>
+               </div>
+
+               <div className="flex gap-2 mt-2 pt-2 border-t border-border-main justify-end">
+                 <button 
+                   onClick={() => setEditingBookmark(null)}
+                   className="px-3 py-1 bg-bg-element hover:bg-border-active transition-colors text-[10px] font-bold text-text-muted rounded border border-border-main uppercase tracking-wider font-sans"
+                 >
+                   Cancel
+                 </button>
+                 <button 
+                   onClick={() => {
+                     // Save Symbol
+                     updateTapeSymbol(editingBookmark.index, editingBookmark.symbol);
+                     
+                     // Save Bookmark
+                     if (editingBookmark.isMarker) {
+                       addBookmark(editingBookmark.index, serializeBookmark(editingBookmark.note, editingBookmark.icon || '📍', editingBookmark.color || 'blue'));
+                     } else {
+                       removeBookmark(editingBookmark.index);
+                     }
+                     
+                     setEditingBookmark(null);
+                   }}
+                   className="px-3 py-1 bg-primary-base hover:bg-opacity-90 transition-all text-bg-base font-bold text-[10px] rounded uppercase tracking-wider font-sans"
+                 >
+                   Save Changes
+                 </button>
+               </div>
+             </motion.div>
+           </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
