@@ -16,7 +16,8 @@ import {
   Download,
   Upload,
   Search,
-  Save
+  Save,
+  HelpCircle
 } from "lucide-react";
 
 export const ScenarioLibrary: React.FC<{
@@ -420,10 +421,24 @@ export const ScenarioLibrary: React.FC<{
         )}
       </div>
 
-      <div className="mt-auto p-3 border-t border-border-main bg-bg-panel/40 shrink-0">
+      <div className="mt-auto p-3 border-t border-border-main bg-bg-panel/40 shrink-0 relative">
         <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#3b82f6] mb-1 flex items-center justify-between">
           <span>AI Scenario Creator</span>
-          <BrainCircuit size={12} className="text-[#3b82f6] animate-pulse" />
+          <div className="flex items-center gap-1.5">
+            <button
+              className="text-[#3b82f6]/70 hover:text-[#3b82f6] border border-[#3b82f6]/30 hover:bg-[#3b82f6]/10 p-0.5 rounded transition-colors group relative"
+              title="Show Examples"
+            >
+              <HelpCircle size={10} />
+              <div className="absolute right-0 bottom-full mb-1 w-48 p-2 rounded bg-bg-surface border border-border-main shadow-xl text-[10px] hidden group-hover:flex flex-col gap-1 text-left opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal z-50 normal-case tracking-normal">
+                <span className="font-bold text-text-primary mb-1 text-xs">Example Prompts:</span>
+                <span className="text-text-secondary bg-bg-element p-1 rounded italic">"A busy beaver that halts quickly"</span>
+                <span className="text-text-secondary bg-bg-element p-1 rounded italic">"Machine that multiplies a unary digit by 3"</span>
+                <span className="text-text-secondary bg-bg-element p-1 rounded italic">"Check if a binary number is divisible by 4"</span>
+              </div>
+            </button>
+            <BrainCircuit size={12} className="text-[#3b82f6] animate-pulse" />
+          </div>
         </div>
         <p className="text-[9px] text-text-muted leading-tight mb-2">
           Synthesize a complete new sandbox scenario from scratch, including initial tape and model properties.

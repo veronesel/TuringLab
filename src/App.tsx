@@ -16,7 +16,8 @@ import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'reac
 
 import { ShortcutsModal } from './components/turing/ShortcutsModal';
 import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
-import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2 } from 'lucide-react';
+import { FloatingWindow } from './components/turing/FloatingWindow';
+import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
 import { Breadcrumb } from './components/ui/Breadcrumb';
@@ -49,9 +50,58 @@ export default function App() {
   
   const [activeLayoutId, setActiveLayoutId] = useState('turing-layout-custom');
   const [layoutResetKey, setLayoutResetKey] = useState(0);
+  const [detachedPanels, setDetachedPanels] = useState<string[]>([]);
+  
+  const togglePanelDetach = (panelId: string) => {
+    setDetachedPanels(prev => 
+      prev.includes(panelId) ? prev.filter(id => id !== panelId) : [...prev, panelId]
+    );
+  };
   
   const sidebarPanelRef = useRef<any>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  const renderTapePanel = () => (
+    <div className="border-b border-border-main w-full h-full relative flex flex-col min-h-0 min-w-0 bg-bg-base">
+      <div data-tour="tape" className="flex-1 flex flex-col min-h-0 min-w-0"><Tape /></div>
+      <div data-tour="controls" className="shrink-0 min-w-0 h-10"><Controls /></div>
+    </div>
+  );
+
+  const renderDiagramPanel = () => (
+    <div className="w-full h-full relative flex flex-col min-h-0 min-w-0">
+      <div data-tour="diagram" className="flex-1 w-full relative overflow-hidden flex flex-col bg-bg-base min-h-0 min-w-0">
+        <StateDiagram onExplainLogic={handleExplainLogic} />
+      </div>
+    </div>
+  );
+
+  const renderRulesPanel = () => (
+    <RuleEditor onOpenStudio={() => setIsStudioOpen(true)} />
+  );
+
+  const renderStatsPanel = () => (
+    <Statistics />
+  );
+
+  const renderDebuggerPanel = () => (
+    <footer data-tour="stats" className="w-full h-full border-t border-border-main bg-bg-surface flex shrink-0 z-10 flex-col">
+      <Debugger />
+    </footer>
+  );
+
+  const DetachableWrapper = ({ id, children }: { id: string, children: React.ReactNode }) => (
+    <div className="relative w-full h-full group/panel overflow-hidden flex flex-col min-h-0 min-w-0">
+      <button 
+        onClick={() => togglePanelDetach(id)}
+        className="absolute top-1 right-1 p-1 bg-bg-surface/80 hover:bg-bg-element text-text-secondary rounded shadow-sm opacity-0 group-hover/panel:opacity-100 transition-opacity z-[60]"
+        title="Detach Panel"
+      >
+        <CopyPlus size={14} />
+      </button>
+      {children}
+    </div>
+  );
 
   useEffect(() => {
     const handleToggle = () => {
@@ -720,38 +770,51 @@ export default function App() {
                         : undefined
                     }
                   >
-                    <Panel defaultSize={35} minSize={15} className="min-h-0 min-w-0 flex flex-col">
-                      <div className="border-b border-border-main w-full h-full relative overflow-hidden flex flex-col min-h-0 min-w-0">
-                        <div data-tour="tape" className="flex-1 flex flex-col min-h-0 min-w-0"><Tape /></div>
-                        <div data-tour="controls" className="shrink-0 min-w-0"><Controls /></div>
-                      </div>
-                    </Panel>
+                    {!detachedPanels.includes('tape') && (
+                      <Panel defaultSize={35} minSize={15} className="min-h-0 min-w-0 flex flex-col">
+                        <DetachableWrapper id="tape">
+                          {renderTapePanel()}
+                        </DetachableWrapper>
+                      </Panel>
+                    )}
                     
-                    {renderHandle('vertical')}
+                    {!detachedPanels.includes('tape') && !detachedPanels.includes('diagram') && renderHandle('vertical')}
                     
-                    <Panel defaultSize={65} minSize={20} className="min-h-0 min-w-0 flex flex-col">
-                      <div className="w-full h-full relative flex flex-col min-h-0 min-w-0">
-                        <div data-tour="diagram" className="flex-1 w-full relative overflow-hidden flex flex-col bg-bg-base min-h-0 min-w-0">
-                          <StateDiagram onExplainLogic={handleExplainLogic} />
-                        </div>
-                      </div>
-                    </Panel>
+                    {!detachedPanels.includes('diagram') && (
+                      <Panel defaultSize={65} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+                        <DetachableWrapper id="diagram">
+                          {renderDiagramPanel()}
+                        </DetachableWrapper>
+                      </Panel>
+                    )}
+
+                    {detachedPanels.includes('tape') && detachedPanels.includes('diagram') && (
+                      <Panel defaultSize={100} className="bg-bg-panel/50 hidden" />
+                    )}
                   </PanelGroup>
                 </Panel>
                 
-                {activeLayoutId !== 'turing-layout-diagram' && (
+                {activeLayoutId !== 'turing-layout-diagram' && (!detachedPanels.includes('rules') || !detachedPanels.includes('stats')) && (
                   <>
                     {renderHandle('horizontal')}
                     <Panel defaultSize={30} minSize={10} className="min-h-0 min-w-0 flex flex-col">
                       <aside data-tour="rules" className="w-full h-full bg-bg-surface flex flex-col z-10 border-l border-border-main min-h-0 min-w-0">
                         <PanelGroup orientation="vertical">
-                          <Panel defaultSize={60} minSize={20} className="min-h-0 min-w-0 flex flex-col">
-                            <RuleEditor onOpenStudio={() => setIsStudioOpen(true)} />
-                          </Panel>
-                          {renderHandle('vertical')}
-                          <Panel defaultSize={40} minSize={20} className="min-h-0 min-w-0 flex flex-col">
-                            <Statistics />
-                          </Panel>
+                          {!detachedPanels.includes('rules') && (
+                            <Panel defaultSize={60} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+                              <DetachableWrapper id="rules">
+                                {renderRulesPanel()}
+                              </DetachableWrapper>
+                            </Panel>
+                          )}
+                          {!detachedPanels.includes('rules') && !detachedPanels.includes('stats') && renderHandle('vertical')}
+                          {!detachedPanels.includes('stats') && (
+                            <Panel defaultSize={40} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+                              <DetachableWrapper id="stats">
+                                {renderStatsPanel()}
+                              </DetachableWrapper>
+                            </Panel>
+                          )}
                         </PanelGroup>
                       </aside>
                     </Panel>
@@ -762,19 +825,48 @@ export default function App() {
           </PanelGroup>
         </Panel>
 
-        {renderHandle('vertical')}
+        {(!detachedPanels.includes('tape') || !detachedPanels.includes('diagram') || !detachedPanels.includes('rules') || !detachedPanels.includes('stats')) && !detachedPanels.includes('debugger') && renderHandle('vertical')}
 
-        <Panel defaultSize={20} minSize={10} className="min-h-0 min-w-0 flex flex-col">
-          <footer data-tour="stats" className="w-full h-full border-t border-border-main bg-bg-surface flex shrink-0 z-10">
-            <Debugger />
-          </footer>
-        </Panel>
+        {!detachedPanels.includes('debugger') && (
+          <Panel defaultSize={20} minSize={10} className="min-h-0 min-w-0 flex flex-col">
+            <DetachableWrapper id="debugger">
+              {renderDebuggerPanel()}
+            </DetachableWrapper>
+          </Panel>
+        )}
       </PanelGroup>
 
       <AdvancedRuleStudio isOpen={isStudioOpen} onClose={() => setIsStudioOpen(false)} />
       <ShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
       <SymbolAliasesPanel isOpen={isAliasPanelOpen} onClose={() => setIsAliasPanelOpen(false)} />
       <HelpSidebar />
+
+      {/* Floating Windows for Detached Panels */}
+      {detachedPanels.includes('tape') && (
+        <FloatingWindow id="tape" title="Tape & Controls" icon={<LayoutDashboard size={12} />} onClose={() => togglePanelDetach('tape')} defaultSize={{width: 600, height: 180}} defaultPosition={{x: window.innerWidth / 2 - 300, y: 50}}>
+          {renderTapePanel()}
+        </FloatingWindow>
+      )}
+      {detachedPanels.includes('diagram') && (
+        <FloatingWindow id="diagram" title="State Diagram" icon={<BrainCircuit size={12} />} onClose={() => togglePanelDetach('diagram')} defaultSize={{width: 800, height: 500}} defaultPosition={{x: window.innerWidth / 2 - 400, y: 100}}>
+          {renderDiagramPanel()}
+        </FloatingWindow>
+      )}
+      {detachedPanels.includes('rules') && (
+        <FloatingWindow id="rules" title="Rule Editor" icon={<BrainCircuit size={12} />} onClose={() => togglePanelDetach('rules')} defaultSize={{width: 400, height: 500}} defaultPosition={{x: 50, y: 100}}>
+          {renderRulesPanel()}
+        </FloatingWindow>
+      )}
+      {detachedPanels.includes('stats') && (
+        <FloatingWindow id="stats" title="Statistics" icon={<LayoutDashboard size={12} />} onClose={() => togglePanelDetach('stats')} defaultSize={{width: 400, height: 400}} defaultPosition={{x: 50, y: window.innerHeight - 450}}>
+          {renderStatsPanel()}
+        </FloatingWindow>
+      )}
+      {detachedPanels.includes('debugger') && (
+        <FloatingWindow id="debugger" title="Debugger" icon={<BrainCircuit size={12} />} onClose={() => togglePanelDetach('debugger')} defaultSize={{width: 800, height: 200}} defaultPosition={{x: window.innerWidth / 2 - 400, y: window.innerHeight - 250}}>
+          {renderDebuggerPanel()}
+        </FloatingWindow>
+      )}
     </div>
   );
 }

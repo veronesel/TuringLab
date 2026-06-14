@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { TMRule, TMScenario, TMHistoryEntry, TMStatistics } from '../types/tm';
 import { useScenariosStore } from './scenariosStore';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface TMState {
   // Scenario Data

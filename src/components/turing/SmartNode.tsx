@@ -2,19 +2,21 @@ import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { motion } from 'motion/react';
 
-export default function SmartNode({ data, selected }: any) {
+export default function SmartNode({ data, selected, dragging }: any) {
   // Using 4 pairs of handles (source and target) so users can easily drag from any side
   // The SmartEdge will still calculate the exact visual path based on node centers!
   return (
     <motion.div 
       style={data.style} 
       animate={{
-        scale: data.isActive ? 1.08 : 1,
+        scale: dragging ? 1.15 : (data.isActive ? 1.08 : 1),
+        boxShadow: dragging ? '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 20px var(--color-primary-base)' : 'none',
+        zIndex: dragging ? 100 : (data.isActive ? 10 : 1)
       }}
       transition={{
         type: "spring",
-        stiffness: 300,
-        damping: 20
+        stiffness: 400,
+        damping: 25
       }}
       className={`relative group ${data.className || ''} ${selected ? 'ring-2 ring-[var(--color-primary-base)] ring-offset-2 ring-offset-[var(--color-bg-base)]' : ''}`}
     >
