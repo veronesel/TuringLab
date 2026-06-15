@@ -121,6 +121,23 @@ export const Controls: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Keyboard Shortcuts Hints */}
+      <div className="hidden lg:flex items-center gap-3 shrink-0 text-[10px] text-text-muted font-sans select-none border-l border-border-main pl-4 ml-4">
+        <span className="uppercase text-[9px] tracking-widest font-bold opacity-60">Shortcuts:</span>
+        <div className="flex items-center gap-1.5 bg-bg-panel/40 px-2 py-1 rounded border border-border-main/40">
+          <kbd className="px-1.5 py-0.5 bg-bg-element border border-border-main rounded text-[10px] font-mono font-bold text-text-primary shadow-sm leading-none">Space</kbd>
+          <span className="text-text-muted text-[10px] tracking-wide font-medium">{isRunning ? "Pause" : "Play"}</span>
+        </div>
+        <div className="flex items-center gap-1.5 bg-bg-panel/40 px-2 py-1 rounded border border-border-main/40">
+          <kbd className="px-1.5 py-0.5 bg-bg-element border border-border-main rounded text-[10px] font-mono font-bold text-text-primary shadow-sm leading-none">R</kbd>
+          <span className="text-text-muted text-[10px] tracking-wide font-medium">Reset</span>
+        </div>
+        <div className="flex items-center gap-1.5 bg-bg-panel/40 px-2 py-1 rounded border border-border-main/40">
+          <kbd className="px-1.5 py-0.5 bg-bg-element border border-border-main rounded text-[10px] font-mono font-bold text-text-primary shadow-sm leading-none">B</kbd>
+          <span className="text-text-muted text-[10px] tracking-wide font-medium">Sidebar</span>
+        </div>
+      </div>
     </div>
   );
 };

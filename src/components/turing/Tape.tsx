@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useTMStore } from '../../store/tmStore';
+import { useThemeStore } from '../../store/themeStore';
+import { playSubtleClick } from '../../utils/audio';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Undo, Redo, Wand2, X, Palette, MapPin, Settings, Trash2, ChevronDown, ChevronUp, Plus, Eraser, Target } from 'lucide-react';
+import { Undo, Redo, Wand2, X, Palette, MapPin, Settings, Trash2, ChevronDown, ChevronUp, Plus, Eraser, Target, Film } from 'lucide-react';
 import { PatternGeneratorPanel } from './PatternGeneratorPanel';
 
 type TapeSkin = 'default' | 'typewriter' | 'dots' | 'binary';
@@ -112,6 +114,70 @@ export const Tape: React.FC = () => {
   const symbolAliases = useTMStore(state => state.symbolAliases);
   const updateHeadPosition = useTMStore(state => state.updateHeadPosition);
   const clearTapeAndResetHead = useTMStore(state => state.clearTapeAndResetHead);
+  const activeScenario = useTMStore(state => state.activeScenario);
+  const showExpectedOutcome = useThemeStore(state => state.showExpectedOutcome);
+  const showExecutionTimeline = useThemeStore(state => state.showExecutionTimeline);
+
+  // We load or save historical max steps to localStorage to provide empirical data
+  const [historicalSteps, setHistoricalSteps] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('turing-historical-steps');
+    const defaults: Record<string, number> = {
+      'binary-palindrome': 32,
+      'unary-addition': 15,
+      'binary-increment': 8,
+      'binary-decrement': 7,
+      'bit-inverter': 9,
+      'copy-unary': 45,
+      'binary-gt': 5,
+      'busy-beaver-2': 6,
+      'odd-length-abc': 6,
+      'trim-spaces': 12,
+      'match-parentheses': 18,
+      'rotate-left': 5,
+      'binary-checker': 9,
+    };
+    if (saved) {
+      try {
+        return { ...defaults, ...JSON.parse(saved) };
+      } catch (e) {
+        return defaults;
+      }
+    }
+    return defaults;
+  });
+
+  const activeScenarioId = activeScenario?.id;
+  const currentScenarioKey = activeScenarioId || 'default';
+  const baselineSteps = historicalSteps[currentScenarioKey] || 25;
+  const targetSteps = Math.max(baselineSteps, stepCount);
+
+  // Update localStorage when running completes, or when stepCount exceeds baseline
+  useEffect(() => {
+    if (status === 'accepted' || status === 'rejected') {
+      if (stepCount > 0 && stepCount !== baselineSteps) {
+        setHistoricalSteps(prev => {
+          const updated = { ...prev, [currentScenarioKey]: stepCount };
+          localStorage.setItem('turing-historical-steps', JSON.stringify(updated));
+          return updated;
+        });
+      }
+    }
+  }, [status, stepCount, currentScenarioKey, baselineSteps]);
+
+  const progressPercent = status === 'accepted' 
+    ? 100 
+    : targetSteps > 0 
+      ? Math.min(100, Math.round((stepCount / targetSteps) * 100)) 
+      : 0;
+
+  const expectedOutcomeText = useMemo(() => {
+    if (!activeScenario?.description) return '';
+    const parts = activeScenario.description.split(/Expected Outcome:\s*/i);
+    if (parts.length > 1) {
+      return parts[1];
+    }
+    return '';
+  }, [activeScenario]);
   
   // Bulk Editing State
   const [hoveredCell, setHoveredCell] = useState<number | null>(null);
@@ -444,18 +510,52 @@ export const Tape: React.FC = () => {
          </div>
       </div>
 
-      <div className="px-4 relative z-10 w-full mb-4 shrink-0">
-        <input 
-          type="range" 
-          min="0" 
-          max={Math.max(0, history.length - 1)} 
-          value={historyIndex}
-          onChange={(e) => jumpToStep(parseInt(e.target.value, 10))}
-          disabled={isRunning || history.length <= 1}
-          className="w-full h-1 bg-bg-element rounded-lg appearance-none cursor-pointer disabled:opacity-50 accent-primary-base"
-          title="Scrub through history"
-        />
-      </div>
+
+
+      {/* Target Progress HUD */}
+      {showExpectedOutcome && (
+        <div className="px-4 mb-2 mt-1 relative z-10 w-full shrink-0">
+          <div className="bg-bg-element/40 border border-border-main/50 rounded-lg p-2.5 flex flex-col gap-1.5 transition-all">
+            <div className="flex justify-between items-center text-[10px] font-sans">
+              <div className="flex items-center gap-1.5 font-bold tracking-wide text-text-muted">
+                <Target size={12} className={clsx("animate-pulse", status === 'accepted' ? "text-green-400 animate-none" : "text-primary-base")} />
+                <span className="uppercase text-[9px] tracking-widest text-text-muted">Expected Outcome Calibration</span>
+              </div>
+              <div className="font-mono text-text-primary text-[10px] bg-bg-surface px-1.5 py-0.5 rounded border border-border-main/50">
+                {progressPercent}% <span className="text-text-muted">({stepCount} / {targetSteps} steps)</span>
+              </div>
+            </div>
+            
+            <div className="w-full bg-bg-surface border border-border-main/40 h-2 rounded-full overflow-hidden relative">
+              <motion.div 
+                className={clsx(
+                  "h-full rounded-full transition-all duration-300",
+                  status === 'accepted' 
+                    ? "bg-gradient-to-r from-green-500 to-emerald-400 shadow-[0_0_8px_#10b981]" 
+                    : status === 'rejected'
+                      ? "bg-gradient-to-r from-orange-500 to-red-500 shadow-[0_0_8px_#f97316]"
+                      : "bg-gradient-to-r from-primary-base to-cyan-400 shadow-[0_0_8px_var(--color-primary-base)]"
+                )}
+                initial={{ width: 0 }}
+                animate={{ width: `${progressPercent}%` }}
+                transition={{ ease: "easeOut", duration: 0.3 }}
+              />
+            </div>
+
+            {activeScenario && (
+              <div className="flex items-center justify-between text-[9px] font-sans text-text-muted gap-2">
+                <div className="truncate max-w-[85%]">
+                  <span className="font-bold text-text-primary uppercase mr-1">Outcome Target:</span>
+                  <span className="italic">{expectedOutcomeText || activeScenario.description}</span>
+                </div>
+                <div className="text-[8px] font-mono text-text-faint uppercase font-bold text-right shrink-0">
+                   Calibrated Baseline: {baselineSteps} steps
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {(status === 'accepted' || status === 'error' || status === 'rejected') && (
@@ -841,6 +941,165 @@ export const Tape: React.FC = () => {
           </motion.div>
         </div>
       </div>
+
+      {/* Visual Timeline History Scrubber Panel */}
+      {showExecutionTimeline && (
+        <div className="px-4 py-3 border-t border-border-main/50 bg-bg-surface/50 w-full shrink-0 relative z-30 select-none font-sans">
+          <div className="flex justify-between items-center mb-2.5">
+            <div className="flex items-center gap-2">
+              <Film size={12} className={clsx("text-primary-base", isRunning && "animate-[spin_4s_linear_infinite]")} />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">Execution Spectrum Timeline</span>
+              <span className="text-[10px] text-text-faint">•</span>
+              <div className="flex items-center gap-1.5 text-[10px] font-mono text-text-muted">
+                <span>Step</span>
+                <span className="px-1.5 py-0.5 rounded bg-bg-element tracking-wider border border-border-main/60 font-bold text-text-primary">
+                  {historyIndex}
+                </span>
+                <span>/</span>
+                <span className="text-text-faint">{Math.max(0, history.length - 1)}</span>
+              </div>
+            </div>
+
+            {/* Current Frame Status Indicator */}
+            <div className="flex items-center gap-2 text-[10px]">
+              {history[historyIndex] && (
+                <div className="flex items-center gap-1.5 bg-bg-element/40 border border-border-main/40 px-2 py-0.5 rounded-md">
+                  <span className="text-text-muted text-[9px] uppercase tracking-wider font-extrabold mr-0.5">Machine State:</span>
+                  <span 
+                    className="w-2 h-2 rounded-full border border-black/30 shadow-inner" 
+                    style={{ backgroundColor: activeScenario?.stateColors?.[history[historyIndex].currentState] || '#3b82f6' }}
+                  />
+                  <code className="font-mono font-bold text-primary-base">{history[historyIndex].currentState}</code>
+                </div>
+              )}
+              
+              {history[historyIndex]?.lastRuleId ? (
+                <div className="hidden sm:flex items-center gap-1 bg-[#1c2128] border border-border-main px-2 py-0.5 rounded text-[8px] text-text-faint font-mono">
+                  <span className="font-bold text-text-faint uppercase font-sans">Last Rule ID:</span>
+                  <span className="text-primary-base font-bold">{history[historyIndex].lastRuleId?.slice(0, 8)}...</span>
+                </div>
+              ) : (
+                <div className="hidden sm:flex items-center gap-1 bg-[#1c2128]/50 border border-border-main/40 px-2 py-0.5 rounded text-[8px] text-text-faint italic font-mono">
+                  Initial Config
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Timeline Spectrum Ribbon Track container */}
+          <div className="relative w-full h-8 flex items-center group/timeline rounded-lg overflow-hidden bg-bg-element border border-border-main/60 shadow-inner">
+            
+            {/* Dynamic Spectrum background bars (representing states over time) */}
+            <div className="absolute inset-0 flex w-full h-full pointer-events-none opacity-45 group-hover/timeline:opacity-65 transition-opacity">
+              {history.map((histEntry, idx) => {
+                const stateColor = activeScenario?.stateColors?.[histEntry.currentState] || '#3b82f6';
+                const isCurrent = idx === historyIndex;
+                return (
+                  <div 
+                    key={idx} 
+                    className="h-full flex-1 border-r border-[#000]/10 last:border-r-0 relative transition-all"
+                    style={{ 
+                      backgroundColor: stateColor,
+                      boxShadow: isCurrent ? `inset 0 0 10px rgba(255,255,255,0.4)` : undefined
+                    }} 
+                  />
+                );
+              })}
+            </div>
+
+            {/* Timeline Keyframe Dot Markers (e.g., changes or bookmarks) */}
+            <div className="absolute inset-x-0 bottom-1 flex w-full pointer-events-none px-1">
+              {history.map((histEntry, idx) => {
+                const hasBookmarkAtHead = bookmarks[histEntry.headPosition] !== undefined;
+                if (!hasBookmarkAtHead) return <div key={idx} className="flex-1 h-1" />;
+                
+                return (
+                  <div key={idx} className="flex-1 flex justify-center items-center h-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 border border-black/40 shadow-sm animate-pulse" title={`Marker at Step ${idx}`} />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Transparent Input Range Overlay to handle scrubbing gestures seamlessly */}
+            <input 
+              type="range" 
+              min="0" 
+              max={Math.max(0, history.length - 1)} 
+              value={historyIndex}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                jumpToStep(val);
+                if (useThemeStore.getState().soundEnabled) {
+                  playSubtleClick();
+                }
+              }}
+              disabled={history.length <= 1}
+              className="absolute inset-0 w-full h-full appearance-none bg-transparent cursor-pointer select-none outline-none z-10 opacity-100 accent-white active:scale-[0.99] transition-transform"
+              style={{
+                WebkitAppearance: 'none',
+              }}
+              title="Scrub Execution History"
+            />
+
+            {/* Glowing cursor tracking thumb (visual only, overlaying input tracker for high fidelity styling) */}
+            {history.length > 1 && (
+              <div 
+                className="absolute h-full w-1 bg-white shadow-[0_0_8px_4px_rgba(255,255,255,0.4)] pointer-events-none z-20 border-x border-[#000]/30"
+                style={{
+                  left: `${(historyIndex / (history.length - 1)) * 100}%`,
+                  transform: 'translateX(-50%)',
+                  transition: isRunning ? 'left 0.1s linear' : 'left 0.15s cubic-bezier(0.2, 0.8, 0.2, 1)'
+                }}
+              />
+            )}
+          </div>
+
+          {/* Playback Progress Timecode / Ticks Bar */}
+          <div className="flex justify-between items-center mt-1.5 text-[8.5px] text-text-faint font-mono uppercase tracking-wide px-1">
+            <div className="flex gap-4">
+              <button 
+                type="button"
+                onClick={() => {
+                  jumpToStep(0);
+                  if (useThemeStore.getState().soundEnabled) {
+                    playSubtleClick();
+                  }
+                }}
+                disabled={historyIndex === 0}
+                className="hover:text-primary-base transition-colors font-bold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+              >
+                ⏪ Start (0)
+              </button>
+              <span className="select-none">│</span>
+              <span className="font-bold">Speed: {Math.round(2000 / useTMStore.getState().executionSpeed)}x</span>
+            </div>
+
+            <div className="flex gap-1 items-center bg-bg-element/30 px-2 py-0.5 rounded border border-border-main/30">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary-base mr-1 pointer-events-none"></div>
+              <span>Current Head:</span>
+              <span className="font-bold text-text-muted">{headPosition}</span>
+            </div>
+
+            <div className="flex gap-4">
+              <span className="select-none">│</span>
+              <button 
+                type="button"
+                onClick={() => {
+                  jumpToStep(history.length - 1);
+                  if (useThemeStore.getState().soundEnabled) {
+                    playSubtleClick();
+                  }
+                }}
+                disabled={historyIndex === history.length - 1}
+                className="hover:text-primary-base transition-colors font-bold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+              >
+                Latest ({Math.max(0, history.length - 1)}) ⏩
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bookmarks Manager Footer Panel */}
       <div className="w-full bg-bg-panel border-t border-border-main shrink-0 mt-auto relative z-30 select-none">

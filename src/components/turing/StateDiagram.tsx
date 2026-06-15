@@ -2,10 +2,11 @@ import React, { useMemo, useEffect, useCallback } from 'react';
 import { ReactFlow, Controls, ControlButton, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges, MiniMap, Connection, getNodesBounds, getViewportForBounds, Panel, useOnViewportChange } from '@xyflow/react';
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force';
 import { motion } from 'motion/react';
-import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, MousePointerClick, Crosshair } from 'lucide-react';
+import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, MousePointerClick, Crosshair, Grid } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import '@xyflow/react/dist/style.css';
 import { useTMStore } from '../../store/tmStore';
+import { useThemeStore } from '../../store/themeStore';
 
 import SmartNode from './SmartNode';
 import SmartEdge from './SmartEdge';
@@ -450,12 +451,32 @@ interface StateDiagramProps {
   onExplainLogic?: () => void;
 }
 
+const TooltipContext = React.createContext<{
+  setTooltip: (text: string | null, element: HTMLElement | null) => void;
+} | null>(null);
+
 const IconButton = ({ icon: Icon, tooltip, onClick, isActive, className = '', disabled=false }: any) => {
+  const context = React.useContext(TooltipContext);
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (context) {
+      context.setTooltip(tooltip, e.currentTarget);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (context) {
+      context.setTooltip(null, null);
+    }
+  };
+
   return (
-    <div className={`relative group flex items-center justify-center ${className}`}>
+    <div className={`relative flex items-center justify-center ${className}`}>
       <button 
         onClick={onClick}
         disabled={disabled}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         className={`p-2 rounded transition-colors flex items-center justify-center ${
            isActive 
              ? 'bg-primary-dark border border-primary-base text-text-primary' 
@@ -464,9 +485,11 @@ const IconButton = ({ icon: Icon, tooltip, onClick, isActive, className = '', di
       >
         <Icon size={14} />
       </button>
-      <div className="absolute right-full mr-2 px-2 py-1 bg-bg-surface text-text-primary text-[10px] whitespace-nowrap rounded border border-border-main opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-        {tooltip}
-      </div>
+      {!context && (
+        <div className="absolute right-full mr-2 px-2 py-1 bg-bg-surface text-text-primary text-[10px] whitespace-nowrap rounded border border-border-main hidden group-hover:block pointer-events-none z-[100]">
+          {tooltip}
+        </div>
+      )}
     </div>
   )
 }
@@ -486,7 +509,12 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   const [showMinimap, setShowMinimap] = React.useState(false);
   const [showLegend, setShowLegend] = React.useState(false);
   const [showArrows, setShowArrows] = React.useState(true);
+  const [snapToGrid, setSnapToGrid] = React.useState(true);
   const [showHowItWorks, setShowHowItWorks] = React.useState(false);
+
+  const diagramTheme = useThemeStore(state => state.diagramTheme);
+  const themeMode = useThemeStore(state => state.themeMode);
+  const autoArrangeEnabled = useThemeStore(state => state.autoArrangeEnabled);
 
   const addDiagramCheckpoint = useTMStore(state => state.addDiagramCheckpoint);
   const removeDiagramCheckpoint = useTMStore(state => state.removeDiagramCheckpoint);
@@ -503,6 +531,53 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
 
   const [heatmapMode, setHeatmapMode] = React.useState(false);
   const [zoomLevel, setZoomLevel] = React.useState(100);
+
+  const toolbarRef = React.useRef<HTMLDivElement>(null);
+  const [activeTooltip, setActiveTooltip] = React.useState<{ text: string; top: number } | null>(null);
+
+  const setTooltip = React.useCallback((text: string | null, element: HTMLElement | null) => {
+    if (!text || !element || !toolbarRef.current) {
+      setActiveTooltip(null);
+      return;
+    }
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const top = elementRect.top - toolbarRect.top + (elementRect.height / 2);
+    setActiveTooltip({ text, top });
+  }, []);
+
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = React.useState(false);
+  const [canScrollDown, setCanScrollDown] = React.useState(false);
+
+  const checkScroll = React.useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      const scrollUp = el.scrollTop > 1;
+      const scrollDown = el.scrollHeight > el.clientHeight + el.scrollTop + 1;
+      setCanScrollUp(scrollUp);
+      setCanScrollDown(scrollDown);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      const timer = setTimeout(checkScroll, 100);
+      el.addEventListener('scroll', checkScroll);
+      window.addEventListener('resize', checkScroll);
+      
+      const observer = new ResizeObserver(checkScroll);
+      observer.observe(el);
+      
+      return () => {
+        clearTimeout(timer);
+        el.removeEventListener('scroll', checkScroll);
+        window.removeEventListener('resize', checkScroll);
+        observer.disconnect();
+      };
+    }
+  }, [checkScroll]);
 
   useOnViewportChange({
     onChange: (viewport) => setZoomLevel(Math.round(viewport.zoom * 100)),
@@ -637,6 +712,89 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
     closeContextMenu();
   }, [getNodes, closeContextMenu]);
 
+  const diagramThemeStyles = useMemo(() => {
+    if (diagramTheme === 'high-contrast') {
+      if (themeMode === 'dark') {
+        return {
+          '--diagram-bg': '#000000',
+          '--diagram-node': '#0a0d14',
+          '--border-main': '#ffffff',
+          '--border-active': '#e5e7eb',
+          '--text-primary': '#ffffff',
+          '--text-muted': '#ffffff',
+          '--bg-surface': '#000000',
+          '--primary-base': '#facc15', // Neon gold/yellow
+          '--primary-dark': '#eab308',
+        } as React.CSSProperties;
+      } else {
+        return {
+          '--diagram-bg': '#ffffff',
+          '--diagram-node': '#ffffff',
+          '--border-main': '#000000',
+          '--border-active': '#111827',
+          '--text-primary': '#000000',
+          '--text-muted': '#000000',
+          '--bg-surface': '#ffffff',
+          '--primary-base': '#1d4ed8', // Deep blue
+          '--primary-dark': '#1e40af',
+        } as React.CSSProperties;
+      }
+    }
+    if (diagramTheme === 'minimal') {
+      if (themeMode === 'dark') {
+        return {
+          '--diagram-bg': 'var(--bg-base)', // Seamless background
+          '--diagram-node': 'transparent',
+          '--border-main': 'rgba(255, 255, 255, 0.15)',
+          '--border-active': 'rgba(255, 255, 255, 0.3)',
+          '--text-primary': '#8b949e',
+          '--text-muted': '#6e7681',
+          '--bg-surface': 'var(--bg-surface)',
+          '--primary-base': 'var(--primary-base)',
+        } as React.CSSProperties;
+      } else {
+        return {
+          '--diagram-bg': 'var(--bg-base)', // Seamless background
+          '--diagram-node': 'transparent',
+          '--border-main': 'rgba(0, 0, 0, 0.12)',
+          '--border-active': 'rgba(0, 0, 0, 0.25)',
+          '--text-primary': '#475569',
+          '--text-muted': '#64748b',
+          '--bg-surface': 'var(--bg-surface)',
+          '--primary-base': 'var(--primary-base)',
+        } as React.CSSProperties;
+      }
+    }
+    if (diagramTheme === 'vibrant') {
+      if (themeMode === 'dark') {
+        return {
+          '--diagram-bg': '#070a13',
+          '--diagram-node': 'rgba(18, 24, 41, 0.85)',
+          '--border-main': '#3b82f6', // Vibrant blue border
+          '--border-active': '#818cf8', // Indigo border active
+          '--text-primary': '#e0e7ff',
+          '--text-muted': '#a5b4fc',
+          '--bg-surface': '#0b0f19',
+          '--primary-base': '#ec4899', // Pink highlights
+          '--primary-dark': '#db2777',
+        } as React.CSSProperties;
+      } else {
+        return {
+          '--diagram-bg': '#f5f3ff', // Soft violet background
+          '--diagram-node': 'rgba(255, 255, 255, 0.9)',
+          '--border-main': '#8b5cf6', // Indigo border
+          '--border-active': '#a78bfa',
+          '--text-primary': '#4c1d95',
+          '--text-muted': '#7c3aed',
+          '--bg-surface': '#f3e8ff',
+          '--primary-base': '#ec4899', // Pink/magenta highlights
+          '--primary-dark': '#db2777',
+        } as React.CSSProperties;
+      }
+    }
+    return {} as React.CSSProperties;
+  }, [diagramTheme, themeMode]);
+
   const { nodes, edges } = useMemo(() => {
     const states = new Set<string>();
     if (activeScenario) {
@@ -718,16 +876,30 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
       if (status === 'error' && isActive) bgColor = '#ef4444';
       if (status === 'rejected' && isActive) bgColor = '#f97316';
 
+      if (diagramTheme === 'vibrant' && !isActive && !isUnreachable && !isStuck && !customColor) {
+        bgColor = themeMode === 'dark' ? 'linear-gradient(135deg, #111827 0%, #1c152d 100%)' : 'linear-gradient(135deg, #fafafa 0%, #eef2ff 100%)';
+      }
+
       let borderColor = isStart ? '#22c55e' : (isAccept ? '#3b82f6' : 'var(--color-border-main)');
       let borderStyle = isAccept ? '4px double' : '2px solid';
 
+      if (diagramTheme === 'minimal') {
+        borderStyle = isAccept ? '2px double' : '1px solid';
+        borderColor = isStart ? 'var(--color-primary-base)' : (isAccept ? '#3b82f6' : 'var(--color-border-main)');
+      } else if (diagramTheme === 'high-contrast') {
+        borderStyle = isAccept ? '5px double' : '3px solid';
+      }
+
       if (isUnreachable || isStuck) {
          borderColor = '#ef4444';
-         if (!isActive) bgColor = '#450a0a';
+         if (!isActive) bgColor = themeMode === 'dark' ? '#450a0a' : '#fee2e2';
       }
 
       let textColor = isActive || customColor ? '#fff' : (isUnreachable || isStuck ? '#fca5a5' : 'var(--color-text-primary)');
       if (customColor && customColor === 'var(--color-diagram-node)') textColor = 'var(--color-text-primary)';
+      if (isActive && diagramTheme === 'minimal') {
+        textColor = 'var(--color-primary-base)';
+      }
 
       let tooltipText = customLabel;
 
@@ -774,7 +946,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
           isStart: isStart,
           style: {
             background: bgColor,
-            color: isActive ? 'var(--color-bg-base)' : textColor,
+            color: isActive ? (diagramTheme === 'minimal' ? 'var(--color-primary-base)' : 'var(--color-bg-base)') : textColor,
             border: borderStyle,
             borderColor: borderColor,
             borderRadius: isAccept ? '50%' : '12px',
@@ -785,7 +957,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
             alignItems: 'center',
             fontWeight: 'bold',
             transition: 'all 0.3s ease',
-            boxShadow: isActive ? '0 0 15px var(--color-primary-base)' : (isUnreachable || isStuck ? '0 0 10px rgba(239, 68, 68, 0.4)' : 'none'),
+            boxShadow: isActive ? (diagramTheme === 'vibrant' ? '0 0 25px var(--color-primary-base)' : (diagramTheme === 'minimal' ? '0 0 5px var(--color-primary-base)' : '0 0 15px var(--color-primary-base)')) : (isUnreachable || isStuck ? '0 0 10px rgba(239, 68, 68, 0.4)' : 'none'),
             fontFamily: 'sans-serif',
             fontSize: '12px'
           } 
@@ -833,6 +1005,15 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
 
     const newEdges: Edge[] = rules.map((rule, idx) => {
       const isActiveTrans = rule.id === lastRuleId;
+      let strokeWidthVal = isActiveTrans ? 3 : 1.5;
+      if (diagramTheme === 'minimal') {
+        strokeWidthVal = isActiveTrans ? 2 : 1;
+      } else if (diagramTheme === 'high-contrast') {
+        strokeWidthVal = isActiveTrans ? 4.5 : 2.5;
+      } else if (diagramTheme === 'vibrant') {
+        strokeWidthVal = isActiveTrans ? 3.5 : 1.8;
+      }
+
       return {
         id: `${rule.id}-${idx}`,
         source: rule.currentState,
@@ -843,7 +1024,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
         className: '!transition-all !duration-300 ease-in-out',
         style: {
           stroke: isActiveTrans ? 'var(--color-primary-base)' : 'var(--color-border-active)',
-          strokeWidth: isActiveTrans ? 3 : 1.5,
+          strokeWidth: strokeWidthVal,
         },
         labelStyle: { fill: isActiveTrans ? 'var(--color-primary-base)' : 'var(--color-text-muted)', fontWeight: isActiveTrans ? 'bold' : 'normal', fontSize: 10, fontFamily: 'monospace' },
         labelBgStyle: { fill: 'var(--color-bg-surface)', fillOpacity: 0.8 },
@@ -867,7 +1048,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
     }
 
     return { nodes: newNodes, edges: newEdges };
-  }, [rules, activeScenario, currentState, lastRuleId, status, heatmapMode, history, historyIndex, showArrows]);
+  }, [rules, activeScenario, currentState, lastRuleId, status, heatmapMode, history, historyIndex, showArrows, diagramTheme, themeMode]);
 
   const doFitBounds = React.useCallback((duration = 800) => {
     const rfNodes = getNodes();
@@ -986,6 +1167,13 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
     }, 100);
   }, [liveNodes, rules, updateScenarioPositions, doFitBounds]);
 
+  // Reactive Auto-Arrange hook
+  React.useEffect(() => {
+    if (autoArrangeEnabled) {
+      handleRelayout();
+    }
+  }, [autoArrangeEnabled, activeScenario?.id, rules.length]);
+
   const handleNodeDragStop = (event: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent, node: Node, draggedNodes: Node[]) => {
     const updates: Record<string, {x: number, y: number}> = {};
     const nodesToCheck = draggedNodes && draggedNodes.length > 0 ? draggedNodes : [node];
@@ -993,6 +1181,10 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
     
     for (const dragged of nodesToCheck) {
       let { x, y } = dragged.position;
+      if (snapToGrid) {
+        x = Math.round(x / 16) * 16;
+        y = Math.round(y / 16) * 16;
+      }
       const width = dragged.measured?.width || 70;
       const height = dragged.measured?.height || 45;
       
@@ -1018,6 +1210,10 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
               hasCollision = true;
               y += nHeight / 2 + padding;
               x += padding;
+              if (snapToGrid) {
+                x = Math.round(x / 16) * 16;
+                y = Math.round(y / 16) * 16;
+              }
             }
           }
           iterations++;
@@ -1118,7 +1314,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   };
 
   return (
-    <div className="flex-1 relative overflow-hidden flex flex-col min-h-0 min-w-0" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
+    <div className="flex-1 relative overflow-hidden flex flex-col min-h-0 min-w-0" style={{ backgroundColor: 'var(--color-diagram-bg)', ...diagramThemeStyles }}>
       <div className="p-3 flex justify-between items-center z-10 relative pointer-events-none shrink-0 border-b border-border-main min-w-0 overflow-x-auto no-scrollbar gap-4" style={{ backgroundColor: 'var(--color-diagram-bg)' }}>
          <span className="text-[10px] font-bold text-primary-base/50 tracking-widest uppercase italic font-sans shrink-0 whitespace-nowrap">Visual State Diagram</span>
           <div className="flex gap-4 font-sans pointer-events-auto items-center shrink-0">
@@ -1128,95 +1324,132 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
           </div>
        </div>
        
-       <div className="flex-1 w-full h-full min-h-0 min-w-0 relative">
-          <motion.div drag dragMomentum={false} dragConstraints={containerRef} className="absolute top-4 right-4 z-50 flex flex-col gap-1.5 p-1.5 bg-bg-surface/80 backdrop-blur border border-border-main rounded-lg shadow-xl pointer-events-auto max-h-[calc(100%-2rem)] overflow-y-auto no-scrollbar w-[44px]">
-            <div className="w-full h-3 flex items-center justify-center cursor-grab active:cursor-grabbing opacity-50 hover:opacity-100 mb-1">
-               <div className="w-4 h-1 bg-text-muted rounded-full"></div>
-            </div>
-            
-            <IconButton icon={HelpCircle} tooltip="How It Works" onClick={() => setShowHowItWorks(true)} />
-            <div className="h-px w-full bg-border-main my-0.5"></div>
-            
-            <div className="relative group flex items-center justify-center">
-               <button 
-                 onClick={handleResetZoom}
-                 className="w-full aspect-square bg-bg-element hover:bg-border-active text-text-secondary rounded transition-colors flex items-center justify-center"
-               >
-                 <span className="text-[8px] font-bold leading-[1.1]">{zoomLevel}<br/>%</span>
-               </button>
-               <div className="absolute right-full mr-2 px-2 py-1 bg-bg-surface text-text-primary text-[10px] whitespace-nowrap rounded border border-border-main opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                 Reset Zoom (100%)
-               </div>
-            </div>
-
-            <IconButton icon={Crosshair} isActive={autoFit} tooltip={`Auto-Fit: ${autoFit ? 'ON' : 'OFF'}`} onClick={() => setAutoFit(!autoFit)} />
-            <IconButton icon={Flame} isActive={heatmapMode} tooltip={`Heatmap: ${heatmapMode ? 'ON' : 'OFF'}`} onClick={() => setHeatmapMode(!heatmapMode)} />
-            <IconButton icon={MapIcon} isActive={showMinimap} tooltip={`Minimap: ${showMinimap ? 'ON' : 'OFF'}`} onClick={() => setShowMinimap(!showMinimap)} />
-            <IconButton icon={List} isActive={showLegend} tooltip={`Legend: ${showLegend ? 'ON' : 'OFF'}`} onClick={() => setShowLegend(!showLegend)} />
-            <IconButton icon={ArrowRightLeft} isActive={showArrows} tooltip={`Arrows: ${showArrows ? 'ON' : 'OFF'}`} onClick={() => setShowArrows(!showArrows)} />
-            
-            <div className="h-px w-full bg-border-main my-0.5"></div>
-            
-            <IconButton icon={LayoutGrid} tooltip="Re-Layout" onClick={handleRelayout} />
-            <IconButton icon={Camera} tooltip="Snapshot" onClick={handleSnapshot} />
-            <IconButton icon={Undo2} tooltip="Step Back" disabled={historyIndex <= 0 || isRunning} onClick={undo} />
-            
-            {/* Checkpoint Dropdown */}
-            <div className="relative w-full group">
-              <button 
-                onClick={() => setShowCheckpoints(!showCheckpoints)}
-                className="w-full flex flex-col items-center justify-center bg-bg-element hover:bg-border-active py-1.5 rounded transition-colors border border-transparent"
+       <div className="flex-1 w-full h-full min-h-0 min-w-0 relative" ref={containerRef}>
+          <motion.div 
+            drag 
+            dragMomentum={false} 
+            dragConstraints={containerRef} 
+            ref={toolbarRef}
+            className="absolute top-4 right-4 z-50 flex flex-col gap-1.5 p-1.5 bg-bg-surface/80 backdrop-blur border border-border-main rounded-lg shadow-xl pointer-events-auto w-[44px] max-h-[calc(100%-2rem)] overflow-visible"
+          >
+            <TooltipContext.Provider value={{ setTooltip }}>
+              {/* Drag Handle */}
+              <div className="w-full h-3 flex items-center justify-center cursor-grab active:cursor-grabbing opacity-50 hover:opacity-100 mb-1 shrink-0">
+                 <div className="w-4 h-1 bg-text-muted rounded-full"></div>
+              </div>
+              
+              {/* Top scroll fade indicator */}
+              <div 
+                className={`h-4 bg-gradient-to-b from-bg-surface to-transparent absolute top-[24px] left-[1.5px] right-[1.5px] pointer-events-none z-10 transition-opacity duration-200 ${canScrollUp ? 'opacity-100' : 'opacity-0'}`}
+              />
+              
+              {/* Scrollable Container */}
+              <div 
+                ref={scrollContainerRef}
+                onScroll={checkScroll}
+                className="flex-1 w-full overflow-y-auto no-scrollbar flex flex-col gap-1.5 min-h-0 relative select-none"
               >
-                <div className="flex text-text-primary items-center"><Save size={12} /></div>
-                <div className="flex text-[9px] font-bold text-text-secondary mt-0.5 leading-none">
-                  {diagramCheckpoints.length} <ChevronDown size={8} />
+                <IconButton icon={HelpCircle} tooltip="How It Works" onClick={() => setShowHowItWorks(true)} />
+                <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
+                
+                <div className="relative flex items-center justify-center shrink-0">
+                   <button 
+                     onClick={handleResetZoom}
+                     onMouseEnter={(e) => setTooltip("Reset Zoom (100%)", e.currentTarget)}
+                     onMouseLeave={() => setTooltip(null, null)}
+                     className="w-full aspect-square bg-bg-element hover:bg-border-active text-text-secondary rounded transition-colors flex items-center justify-center"
+                   >
+                     <span className="text-[8px] font-bold leading-[1.1]">{zoomLevel}<br/>%</span>
+                   </button>
                 </div>
-              </button>
-              
-               {!showCheckpoints && (
-                 <div className="absolute right-full mr-2 top-0 px-2 py-1 bg-bg-surface text-text-primary text-[10px] whitespace-nowrap rounded border border-border-main opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                   Checkpoints (Click to open)
-                 </div>
-               )}
-              
-              {showCheckpoints && (
-                <div className="absolute top-0 right-[calc(100%+8px)] w-48 bg-bg-panel border border-border-main rounded shadow-xl overflow-hidden z-[200]">
-                  <div className="flex items-center justify-between p-2 border-b border-border-main">
-                     <span className="text-[10px] font-bold text-text-muted">SAVED CHECKPOINTS</span>
-                     <button
-                        onClick={() => {
-                           const name = window.prompt("Save checkpoint name:", `Step ${useTMStore.getState().historyIndex}`);
-                           if (name) addDiagramCheckpoint(name);
-                        }}
-                        className="text-[9px] bg-primary-base/20 text-primary-base hover:bg-primary-base/40 px-1.5 py-0.5 rounded"
-                     >
-                        + SAVE
-                     </button>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto no-scrollbar">
-                    {diagramCheckpoints.length === 0 ? (
-                      <div className="p-3 text-[10px] text-text-faint text-center">No checkpoints saved.</div>
-                    ) : (
-                      diagramCheckpoints.map(cp => (
-                        <div key={cp.id} className="flex items-center justify-between p-2 hover:bg-bg-element border-b border-border-main/50 last:border-0 group/cp cursor-pointer" onClick={() => { jumpToStep(cp.stepNumber); setShowCheckpoints(false); }}>
-                           <div className="flex flex-col min-w-0">
-                             <span className="text-[10px] text-text-primary truncate font-bold">{cp.name}</span>
-                             <span className="text-[9px] text-text-muted font-mono">Step: {cp.stepNumber}</span>
-                           </div>
-                           <button 
-                             onClick={(e) => { e.stopPropagation(); removeDiagramCheckpoint(cp.id); }}
-                             className="p-1.5 text-text-faint hover:text-red-400 hover:bg-red-400/10 rounded transition-colors hidden group-hover/cp:block shrink-0"
-                             title="Delete Checkpoint"
-                           >
-                             <Trash2 size={12} />
-                           </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
+
+                <IconButton icon={Crosshair} isActive={autoFit} tooltip={`Auto-Fit: ${autoFit ? 'ON' : 'OFF'}`} onClick={() => setAutoFit(!autoFit)} />
+                <IconButton icon={LayoutGrid} tooltip="Re-Layout" onClick={handleRelayout} />
+                <IconButton icon={Grid} isActive={snapToGrid} tooltip={`Snap to Grid: ${snapToGrid ? 'ON' : 'OFF'}`} onClick={() => setSnapToGrid(!snapToGrid)} />
+                
+                <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
+                
+                <IconButton icon={ArrowRightLeft} isActive={showArrows} tooltip={`Arrows: ${showArrows ? 'ON' : 'OFF'}`} onClick={() => setShowArrows(!showArrows)} />
+                <IconButton icon={Camera} tooltip="Snapshot" onClick={handleSnapshot} />
+                <IconButton icon={Undo2} tooltip="Step Back" disabled={historyIndex <= 0 || isRunning} onClick={undo} />
+                
+                {/* Checkpoint Dropdown */}
+                <div className="relative w-full shrink-0">
+                  <button 
+                    onClick={() => setShowCheckpoints(!showCheckpoints)}
+                    onMouseEnter={(e) => {
+                      if (!showCheckpoints) setTooltip("Checkpoints (Click to open)", e.currentTarget);
+                    }}
+                    onMouseLeave={() => setTooltip(null, null)}
+                    className="w-full flex flex-col items-center justify-center bg-bg-element hover:bg-border-active py-1.5 rounded transition-colors border border-transparent"
+                  >
+                    <div className="flex text-text-primary items-center"><Save size={12} /></div>
+                    <div className="flex text-[9px] font-bold text-text-secondary mt-0.5 leading-none">
+                      {diagramCheckpoints.length} <ChevronDown size={8} />
+                    </div>
+                  </button>
+                  
+                  {showCheckpoints && (
+                    <div className="absolute top-0 right-[calc(100%+8px)] w-48 bg-bg-panel border border-border-main rounded shadow-xl overflow-hidden z-[200]">
+                      <div className="flex items-center justify-between p-2 border-b border-border-main">
+                         <span className="text-[10px] font-bold text-text-muted">SAVED CHECKPOINTS</span>
+                         <button
+                            onClick={() => {
+                               const name = window.prompt("Save checkpoint name:", `Step ${useTMStore.getState().historyIndex}`);
+                               if (name) addDiagramCheckpoint(name);
+                            }}
+                            className="text-[9px] bg-primary-base/20 text-primary-base hover:bg-primary-base/40 px-1.5 py-0.5 rounded"
+                         >
+                            + SAVE
+                         </button>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto no-scrollbar">
+                        {diagramCheckpoints.length === 0 ? (
+                          <div className="p-3 text-[10px] text-text-faint text-center">No checkpoints saved.</div>
+                        ) : (
+                          diagramCheckpoints.map(cp => (
+                            <div key={cp.id} className="flex items-center justify-between p-2 hover:bg-bg-element border-b border-border-main/50 last:border-0 group/cp cursor-pointer" onClick={() => { jumpToStep(cp.stepNumber); setShowCheckpoints(false); }}>
+                               <div className="flex flex-col min-w-0">
+                                 <span className="text-[10px] text-text-primary truncate font-bold">{cp.name}</span>
+                                 <span className="text-[9px] text-text-muted font-mono">Step: {cp.stepNumber}</span>
+                               </div>
+                               <button 
+                                 onClick={(e) => { e.stopPropagation(); removeDiagramCheckpoint(cp.id); }}
+                                 className="p-1.5 text-text-faint hover:text-red-400 hover:bg-red-400/10 rounded transition-colors hidden group-hover/cp:block shrink-0"
+                                 title="Delete Checkpoint"
+                               >
+                                 <Trash2 size={12} />
+                               </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
+                
+                <IconButton icon={Flame} isActive={heatmapMode} tooltip={`Heatmap: ${heatmapMode ? 'ON' : 'OFF'}`} onClick={() => setHeatmapMode(!heatmapMode)} />
+                <IconButton icon={MapIcon} isActive={showMinimap} tooltip={`Minimap: ${showMinimap ? 'ON' : 'OFF'}`} onClick={() => setShowMinimap(!showMinimap)} />
+                <IconButton icon={List} isActive={showLegend} tooltip={`Legend: ${showLegend ? 'ON' : 'OFF'}`} onClick={() => setShowLegend(!showLegend)} />
+              </div>
+
+              {/* Bottom scroll fade indicator */}
+              <div 
+                className={`h-4 bg-gradient-to-t from-bg-surface to-transparent absolute bottom-[6px] left-[1.5px] right-[1.5px] pointer-events-none z-10 transition-opacity duration-200 ${canScrollDown ? 'opacity-100' : 'opacity-0'}`}
+              />
+
+              {/* Outside absolute tooltip with zero-latency parent relative positioning */}
+              {activeTooltip && (
+                <div 
+                  className="absolute right-[calc(100%+8px)] px-2 py-1 bg-bg-surface text-text-primary text-[10px] whitespace-nowrap rounded border border-border-main pointer-events-none z-[100] transform -translate-y-1/2 shadow-lg"
+                  style={{ top: `${activeTooltip.top}px` }}
+                >
+                  {activeTooltip.text}
                 </div>
               )}
-            </div>
+            </TooltipContext.Provider>
           </motion.div>
         {hoveredNode && (() => {
           const customLabel = activeScenario?.stateLabels?.[hoveredNode.id];
@@ -1497,7 +1730,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
           onNodeContextMenu={onNodeContextMenu}
           onConnect={onConnect}
           connectionLineComponent={SmartConnectionLine}
-          snapToGrid={true}
+          snapToGrid={snapToGrid}
           snapGrid={[16, 16]}
           fitView
           attributionPosition="bottom-right"

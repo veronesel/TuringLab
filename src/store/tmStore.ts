@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { TMRule, TMScenario, TMHistoryEntry, TMStatistics } from '../types/tm';
 import { useScenariosStore } from './scenariosStore';
+import { useThemeStore } from './themeStore';
+import { playSubtleClick, playMachineStart, playMachineSuccess, playMachineFailure } from '../utils/audio';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface TMState {
@@ -317,8 +319,14 @@ export const useTMStore = create<TMState>()(
         if (!matchingRule) {
           if (activeScenario?.acceptStates.includes(currentState)) {
             set({ status: 'accepted', isRunning: false });
+            if (useThemeStore.getState().soundEnabled) {
+              playMachineSuccess();
+            }
           } else {
             set({ status: 'rejected', errorMessage: `No rule found for state '${currentState}' and symbol '${readSymbol}'`, isRunning: false });
+            if (useThemeStore.getState().soundEnabled) {
+              playMachineFailure();
+            }
           }
           return;
         }
@@ -329,6 +337,17 @@ export const useTMStore = create<TMState>()(
         
         if (matchingRule.moveDirection === 'R') newHeadPosition++;
         else if (matchingRule.moveDirection === 'L') newHeadPosition--;
+
+        const isAccepted = activeScenario?.acceptStates.includes(matchingRule.nextState);
+
+        // Trigger subtle tactile click sound feedback if enabled globally
+        if (useThemeStore.getState().soundEnabled) {
+          if (isAccepted) {
+            playMachineSuccess();
+          } else {
+            playSubtleClick();
+          }
+        }
 
         const newVisitedStates = new Set(visitedStates).add(matchingRule.nextState);
         const stepDuration = performance.now() - statistics.sessionStartTimeMs - statistics.totalTimeMs;
@@ -359,13 +378,14 @@ export const useTMStore = create<TMState>()(
         // If we are computing a new step but are not at the end of the history array, trim the future history.
         const newHistory = history.slice(0, historyIndex + 1);
         
-        const newStatus = activeScenario?.acceptStates.includes(matchingRule.nextState) ? 'accepted' : 'idle';
+        const newStatus = isAccepted ? 'accepted' : 'idle';
 
         set({
           ...newState,
           history: [...newHistory, newState],
           historyIndex: historyIndex + 1,
-          status: newStatus as any
+          status: newStatus as any,
+          isRunning: isAccepted ? false : get().isRunning
         });
 
         if (activeScenario) {
@@ -452,6 +472,10 @@ export const useTMStore = create<TMState>()(
 
       run: () => {
          // Check if we are at history end, if so we can just set isRunning
+         const { isRunning } = get();
+         if (!isRunning && useThemeStore.getState().soundEnabled) {
+           playMachineStart();
+         }
          set({ isRunning: true, isPaused: false });
       },
       pause: () => set({ isRunning: false, isPaused: true }),

@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { TMRule, Direction } from '../../types/tm';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, FileText, Table, Search, X, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, FileText, Table, Search, X, GripVertical, Palette } from 'lucide-react';
 import { AutocompleteInput } from './AutocompleteInput';
+import { playSubtleClick } from '../../utils/audio';
 
 interface RuleEditorProps {
   onOpenStudio?: () => void;
@@ -73,11 +74,13 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const setRules = useTMStore(state => state.setRules);
   const lastRuleId = useTMStore(state => state.lastRuleId);
   const isRunning = useTMStore(state => state.isRunning);
+  const isPaused = useTMStore(state => state.isPaused);
   const activeScenario = useTMStore(state => state.activeScenario);
   const currentState = useTMStore(state => state.currentState);
   const headPosition = useTMStore(state => state.headPosition);
   const tape = useTMStore(state => state.tape);
   const executionSpeed = useTMStore(state => state.executionSpeed);
+  const updateStateColor = useTMStore(state => state.updateStateColor);
 
   const [localRules, setLocalRules] = useState<TMRule[]>(rules);
   const [isBulkMode, setIsBulkMode] = useState<boolean>(false);
@@ -90,6 +93,8 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragRowId, setDragRowId] = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
+  const [showStateColorsManager, setShowStateColorsManager] = useState<boolean>(false);
+  const [selectedStateForColor, setSelectedStateForColor] = useState<string | null>(null);
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const symbolAliases = useTMStore(state => state.symbolAliases);
@@ -488,6 +493,18 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
             </button>
           )}
           <button 
+            type="button"
+            onClick={() => setShowStateColorsManager(!showStateColorsManager)} 
+            className={`px-2 py-0.5 text-[9px] border rounded transition-all duration-150 flex items-center gap-1 font-bold uppercase tracking-wide ${
+              showStateColorsManager 
+                ? 'bg-amber-900/40 text-primary-base border-primary-base/40 hover:bg-amber-900/60' 
+                : 'bg-[#1c2128] text-text-secondary border-border-main hover:bg-[#252c36]'
+            }`}
+            title="Manage custom background colors for individual states"
+          >
+            <Palette size={10} /> State Colors
+          </button>
+          <button 
             onClick={() => {
               if (isBulkMode) {
                 const { rulesList, errors } = textToRules(bulkText);
@@ -523,6 +540,96 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
           </button>
         </div>
       </div>
+
+      {showStateColorsManager && (
+        <div className="mx-3 mt-2 mb-1 bg-bg-panel/95 backdrop-blur-sm border border-border-main/80 rounded-lg p-3 flex flex-col gap-2 font-sans text-xs animate-in fade-in slide-in-from-top-2 relative z-20 shadow-md">
+          <div className="flex justify-between items-center border-b border-border-main/50 pb-2">
+            <span className="font-bold text-text-primary uppercase tracking-wider text-[10px] flex items-center gap-1.5 font-sans">
+              <Palette size={13} className="text-primary-base animate-pulse" />
+              State Background Colors Editor
+            </span>
+            <button 
+              onClick={() => setShowStateColorsManager(false)}
+              className="text-text-muted hover:text-text-primary p-0.5 hover:bg-bg-element rounded transition-colors"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          
+          <p className="text-[10px] text-text-muted">
+            Customize colors for active states. Selected colors are automatically refreshed across state nodes in the diagram.
+          </p>
+
+          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto py-1 no-scrollbar pr-1">
+            {uniqueStates.map(stateName => {
+              const currentColor = activeScenario?.stateColors?.[stateName] || '#1f2937';
+              const isSelected = selectedStateForColor === stateName;
+              return (
+                <button
+                  type="button"
+                  key={stateName}
+                  onClick={() => setSelectedStateForColor(isSelected ? null : stateName)}
+                  className={`px-2.5 py-1 rounded border text-[10px] font-mono font-bold flex items-center gap-1.5 transition-all outline-none ${
+                    isSelected 
+                      ? 'border-primary-base bg-primary-base/15 text-text-primary ring-1 ring-primary-base/30' 
+                      : 'border-border-main bg-bg-surface hover:border-border-active text-text-secondary'
+                  }`}
+                >
+                  <span 
+                    className="w-2.5 h-2.5 rounded-full border border-black/30 shadow-inner shrink-0" 
+                    style={{ backgroundColor: currentColor }} 
+                  />
+                  {stateName}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedStateForColor && (
+            <div className="bg-bg-surface border border-border-main/60 rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-text-primary">
+                  Colors for state <code className="text-primary-base font-bold bg-bg-element px-1.5 py-0.5 rounded border border-border-main/40 font-mono">{selectedStateForColor}</code>:
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                {['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6b7280', '#1f2937'].map(color => (
+                  <button
+                    type="button"
+                    key={color}
+                    onClick={() => {
+                      updateStateColor(selectedStateForColor, color);
+                      playSubtleClick();
+                    }}
+                    className={`w-5.5 h-5.5 rounded-full border hover:scale-110 cursor-pointer transition-transform shadow-[0_1.5px_3px_rgba(0,0,0,0.3)] ${
+                      (activeScenario?.stateColors?.[selectedStateForColor] || '#1f2937') === color 
+                        ? 'border-white ring-1 ring-primary-base' 
+                        : 'border-border-active'
+                    }`}
+                    style={{ backgroundColor: color }}
+                    title={`Set color to ${color}`}
+                  />
+                ))}
+                
+                <div className="h-4 w-[1px] bg-border-main mx-1" />
+                
+                <div className="relative w-5.5 h-5.5 rounded-full overflow-hidden border border-border-active hover:scale-110 cursor-pointer transition-transform shadow-[0_1.5px_3px_rgba(0,0,0,0.3)] shrink-0">
+                  <input
+                    type="color"
+                    className="absolute -top-2 -left-2 w-10 h-10 cursor-pointer"
+                    value={activeScenario?.stateColors?.[selectedStateForColor] || '#1f2937'}
+                    onChange={(e) => {
+                      updateStateColor(selectedStateForColor, e.target.value);
+                    }}
+                    title="Choose a custom color from system picker"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {isBulkMode ? (
         <div className="flex-1 flex flex-col p-3 overflow-hidden gap-2 bg-bg-surface/50 h-full">
@@ -733,7 +840,8 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                   const currentReadSymbol = (tape[headPosition] || '_').trim() || '_';
                   const isMatching = rule.currentState.trim() === currentState.trim() && 
                                      (rule.readSymbol.trim() || '_') === currentReadSymbol;
-                  const isActive = isMatching || isLastRule;
+                  const isExecutingRow = (isRunning || isPaused) && isMatching;
+                  const isActive = isExecutingRow || isLastRule;
 
                   const isConflicting = conflicts.has(rule.id);
                   const curStateTrimmed = rule.currentState.trim();
@@ -790,8 +898,8 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           ? 'opacity-40 bg-[#161B22]/30 border-l-2 border-dashed border-primary-base'
                           : isHighlighted
                             ? 'bg-amber-500/25 ring-1 ring-amber-500/60 border-l-2 border-amber-500 shadow-md font-semibold scale-[1.01] z-10'
-                            : isMatching 
-                              ? 'bg-primary-base/20 border-l-4 border-primary-base shadow-md shadow-primary-base/30 font-bold scale-[1.01] z-10 duration-150' 
+                            : isExecutingRow 
+                              ? 'animate-fade-in-highlight border-l-4 border-primary-base shadow-lg shadow-primary-base/35 font-extrabold scale-[1.015] z-10 duration-150 ring-1 ring-primary-base/40' 
                               : (isLastRule ? 'bg-primary-base/5 shadow-sm' : 'hover:bg-bg-panel/40')
                       }`}
                     >
@@ -812,7 +920,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                         )}
                       </td>
                       <td className="py-1.5 text-center text-text-faint border-r border-[#161B22]/50 relative">
-                        {isMatching && (
+                        {isExecutingRow && (
                           <>
                             <span className="absolute left-1 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-primary-base rounded-full animate-ping opacity-60" />
                             <span className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-primary-base rounded-full shadow-[0_0_8px_var(--color-primary-base)]" />
@@ -829,7 +937,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                             title={`Unreachable state: No transitions lead to state "${curStateTrimmed}"`} 
                           />
                         ) : null}
-                        <span className={isMatching ? 'text-primary-base font-bold pl-2.5' : ''}>{index + 1}</span>
+                        <span className={isExecutingRow ? 'text-primary-base font-extrabold pl-2.5' : ''}>{index + 1}</span>
                       </td>
                       <td className="py-1.5 pl-2 pr-1">
                         <AutocompleteInput 

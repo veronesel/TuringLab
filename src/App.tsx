@@ -15,13 +15,16 @@ import { PerformanceOverlay } from './components/turing/PerformanceOverlay';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
 import { ShortcutsModal } from './components/turing/ShortcutsModal';
+import { SettingsModal } from './components/turing/SettingsModal';
 import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
 import { FloatingWindow } from './components/turing/FloatingWindow';
-import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus } from 'lucide-react';
+import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus, Volume2, VolumeX } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
 import { Breadcrumb } from './components/ui/Breadcrumb';
+import { InstantTooltip } from './components/ui/InstantTooltip';
 import { useThemeStore, DARK_SCHEMAS, LIGHT_SCHEMAS } from './store/themeStore';
+import { motion, AnimatePresence } from 'motion/react';
 
 const renderHandle = (direction: 'horizontal' | 'vertical') => (
   <PanelResizeHandle
@@ -42,10 +45,45 @@ export default function App() {
   const loadScenario = useTMStore(state => state.loadScenario);
   const activeScenario = useTMStore(state => state.activeScenario);
   
+  interface Toast {
+    id: string;
+    message: string;
+    downloadUrl: string;
+    fileName: string;
+    fileType: 'CSV' | 'JSON' | 'PDF';
+  }
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = (message: string, downloadUrl: string, fileName: string, fileType: 'CSV' | 'JSON' | 'PDF') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, message, downloadUrl, fileName, fileType }]);
+    setTimeout(() => {
+      setToasts(prev => {
+        const target = prev.find(t => t.id === id);
+        if (target && target.downloadUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(target.downloadUrl);
+        }
+        return prev.filter(t => t.id !== id);
+      });
+    }, 6000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => {
+      const target = prev.find(t => t.id === id);
+      if (target && target.downloadUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(target.downloadUrl);
+      }
+      return prev.filter(t => t.id !== id);
+    });
+  };
+
   const [isTourActive, setIsTourActive] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
   
   const [activeLayoutId, setActiveLayoutId] = useState('turing-layout-custom');
@@ -140,7 +178,7 @@ export default function App() {
     }
   };
 
-  const { themeMode, colorSchema, toggleThemeMode, setColorSchema } = useThemeStore();
+  const { themeMode, colorSchema, toggleThemeMode, setColorSchema, soundEnabled, setSoundEnabled } = useThemeStore();
   const { activeScenarios, addActiveScenario } = useScenariosStore();
 
   useEffect(() => {
@@ -209,9 +247,10 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `turing-history-${Date.now()}.csv`;
+    const fileName = `turing-history-${Date.now()}.csv`;
+    a.download = fileName;
     a.click();
-    URL.revokeObjectURL(url);
+    addToast("Export successful", url, fileName, 'CSV');
   };
 
   const handleCopyURL = () => {
@@ -327,7 +366,16 @@ export default function App() {
         }
       }
 
-      pdf.save(`TuringLab-Report-${Date.now()}.pdf`);
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      const fileName = `TuringLab-Report-${Date.now()}.pdf`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      addToast("Export successful", url, fileName, 'PDF');
     } catch (e) {
       console.error("PDF export failed", e);
       alert("Failed to export PDF: " + (e as Error).message);
@@ -375,11 +423,12 @@ export default function App() {
      const url = URL.createObjectURL(blob);
      const a = document.createElement('a');
      a.href = url;
-     a.download = `tm-config-${Date.now()}.json`;
+     const fileName = `tm-config-${Date.now()}.json`;
+     a.download = fileName;
      document.body.appendChild(a);
      a.click();
      document.body.removeChild(a);
-     URL.revokeObjectURL(url);
+     addToast("Export successful", url, fileName, 'JSON');
   };
 
   const handleImportConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -664,8 +713,20 @@ export default function App() {
              </div>
           </div>
           <div className="h-4 w-px bg-border-main"></div>
-          <button className="p-1.5 hover:bg-bg-element rounded-full">
-            <Settings2 size={16} className="text-text-secondary"/>
+          <button 
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="p-1.5 hover:bg-bg-element rounded-full text-text-secondary transition-colors"
+            title={soundEnabled ? "Disable Sound" : "Enable Sound"}
+          >
+            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+          <div className="h-4 w-px bg-border-main"></div>
+          <button 
+            onClick={() => setIsSettingsModalOpen(true)}
+            className="p-1.5 hover:bg-bg-element rounded-full text-text-secondary transition-colors"
+            title="Settings"
+          >
+            <Settings2 size={16} />
           </button>
         </div>
       </header>
@@ -838,6 +899,7 @@ export default function App() {
 
       <AdvancedRuleStudio isOpen={isStudioOpen} onClose={() => setIsStudioOpen(false)} />
       <ShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
+      <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
       <SymbolAliasesPanel isOpen={isAliasPanelOpen} onClose={() => setIsAliasPanelOpen(false)} />
       <HelpSidebar />
 
@@ -867,6 +929,57 @@ export default function App() {
           {renderDebuggerPanel()}
         </FloatingWindow>
       )}
+      <InstantTooltip />
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: 30, scale: 0.92, x: 20 }}
+              animate={{ opacity: 1, y: 0, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.85, x: 40, transition: { duration: 0.15 } }}
+              layout
+              className="pointer-events-auto bg-bg-panel border border-border-active rounded-xl shadow-2xl p-4 flex flex-col gap-3 backdrop-blur-md relative"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="p-1 rounded-lg bg-green-500/10 text-green-400 mt-0.5 shrink-0">
+                    <CheckCircle2 size={15} />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold text-text-primary font-sans tracking-wide">
+                      {toast.message}
+                    </h4>
+                    <p className="text-[10px] text-text-muted font-sans mt-0.5 leading-normal truncate max-w-[210px]" title={toast.fileName}>
+                      {toast.fileName}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeToast(toast.id)}
+                  className="p-1 rounded bg-transparent hover:bg-bg-element text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                  title="Dismiss Notification"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <a
+                  href={toast.downloadUrl}
+                  download={toast.fileName}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-primary-base hover:bg-primary-dark text-bg-base font-bold text-[10px] uppercase tracking-wider transition-colors shadow-sm cursor-pointer select-none"
+                >
+                  <Download size={12} />
+                  Save {toast.fileType} File
+                </a>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

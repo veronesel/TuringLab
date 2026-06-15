@@ -155,3 +155,32 @@
     stroke-dashoffset: 0;
   }
 }
+
+@keyframes highlight-fade-in {
+  0% {
+    background-color: rgba(0, 0, 0, 0);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    border-left-color: rgba(0, 0, 0, 0);
+  }
+  100% {
+    background-color: color-mix(in srgb, var(--primary-base) 25%, transparent);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+    border-left-color: var(--primary-base);
+  }
+}
+
+.animate-fade-in-highlight {
+  animation: highlight-fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes instant-tooltip-appear {
+  0% {
+    opacity: 0;
+    scale: 0.96;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+

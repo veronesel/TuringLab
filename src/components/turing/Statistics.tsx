@@ -366,7 +366,9 @@ export const Statistics: React.FC = () => {
 
   return (
     <div className="bg-bg-panel p-3 overflow-y-auto flex flex-col font-sans flex-1 min-h-0 min-w-0">
-      <div className="flex justify-between items-center mb-2 min-w-0 flex-wrap gap-2">
+      <TimeComplexityChart />
+
+      <div className="flex justify-between items-center mt-4 mb-2 min-w-0 flex-wrap gap-2 border-t border-border-main pt-3">
         <span className="text-[10px] font-bold text-text-muted uppercase">Real-time Stats</span>
         <span className={`text-[10px] uppercase font-bold ${status === 'running' ? 'text-primary-base' : status === 'accepted' ? 'text-green-400' : status === 'error' || status === 'rejected' ? 'text-red-400' : 'text-text-secondary'}`}>{status}</span>
       </div>
@@ -410,7 +412,6 @@ export const Statistics: React.FC = () => {
         </div>
       </div>
       
-      <TimeComplexityChart />
       <StateHeatmap />
     </div>
   );

@@ -20,6 +20,54 @@ import {
   HelpCircle
 } from "lucide-react";
 
+const parseExpectedOutcome = (desc: string) => {
+  const parts = desc.split(/Expected Outcome:\s*/i);
+  if (parts.length > 1) {
+    return {
+      description: parts[0].trim(),
+      expected: parts[1].trim()
+    };
+  }
+  return {
+    description: desc,
+    expected: null
+  };
+};
+
+const getExpectedColorInfo = (sc: TMScenario) => {
+  if (sc.category === "Busy Beavers") {
+    return {
+      label: "Neutral Halting",
+      bgClass: "bg-gray-500/10 text-gray-400 border-gray-500/25",
+      dotClass: "bg-gray-400",
+      colorType: "gray"
+    };
+  }
+  if (
+    sc.category === "String Manipulation" || 
+    sc.id === "find-char" || 
+    sc.id === "unary-add" || 
+    sc.id === "subtraction-unary" ||
+    sc.id === "ones-complement" ||
+    sc.id === "multiply-by-2" ||
+    sc.id === "inc-binary" ||
+    sc.id === "dec-binary"
+  ) {
+    return {
+      label: "Tape Modification",
+      bgClass: "bg-amber-500/10 text-amber-500 border-amber-500/25",
+      dotClass: "bg-amber-500",
+      colorType: "amber"
+    };
+  }
+  return {
+    label: "Success/Accepted",
+    bgClass: "bg-green-500/10 text-green-500 border-green-500/25",
+    dotClass: "bg-green-500",
+    colorType: "green"
+  };
+};
+
 export const ScenarioLibrary: React.FC<{
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -27,6 +75,128 @@ export const ScenarioLibrary: React.FC<{
   const loadScenario = useTMStore((state) => state.loadScenario);
   const clearScenario = useTMStore((state) => state.clearScenario);
   const activeInstanceDetails = useTMStore((state) => state.activeScenario);
+  const currentStatus = useTMStore((state) => state.status);
+  const stepCount = useTMStore((state) => state.stepCount);
+
+  const getActualResultInfo = (scId: string) => {
+    if (activeInstanceDetails?.id !== scId) {
+      return (
+        <div className="text-text-muted text-[8px] italic mt-1">
+          Select scenario to run & view results
+        </div>
+      );
+    }
+
+    if (currentStatus === 'accepted') {
+      return (
+        <>
+          <div className="flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-[9px] font-bold text-green-500 uppercase tracking-wider">
+              Accepted
+            </span>
+          </div>
+          <span className="text-[8px] text-text-secondary leading-tight block mt-0.5">
+            The machine successfully halted in an accept state in {stepCount} steps.
+          </span>
+        </>
+      );
+    }
+
+    if (currentStatus === 'rejected') {
+      return (
+        <>
+          <div className="flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="text-[9px] font-bold text-amber-500 uppercase tracking-wider">
+              Rejected/Halted
+            </span>
+          </div>
+          <span className="text-[8px] text-text-secondary leading-tight block mt-0.5">
+            Machine halted in non-accept state after {stepCount} steps.
+          </span>
+        </>
+      );
+    }
+
+    if (currentStatus === 'error') {
+      return (
+        <>
+          <div className="flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400" />
+            <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">
+              Error
+            </span>
+          </div>
+          <span className="text-[8px] text-text-secondary leading-tight block mt-0.5">
+            The machine encountered an execution error.
+          </span>
+        </>
+      );
+    }
+
+    if (currentStatus === 'running') {
+      return (
+        <>
+          <div className="flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+            <span className="text-[9px] font-bold text-[#3b82f6] uppercase tracking-wider animate-pulse">
+              Running
+            </span>
+          </div>
+          <span className="text-[8px] text-text-secondary leading-tight block mt-0.5">
+            Currently running on step {stepCount}...
+          </span>
+        </>
+      );
+    }
+
+    if (currentStatus === 'paused') {
+      return (
+        <>
+          <div className="flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400" />
+            <span className="text-[9px] font-bold text-text-secondary uppercase tracking-wider">
+              Paused
+            </span>
+          </div>
+          <span className="text-[8px] text-text-secondary leading-tight block mt-0.5">
+            Execution suspended at step {stepCount}.
+          </span>
+        </>
+      );
+    }
+
+    if (stepCount > 0) {
+      return (
+        <>
+          <div className="flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500" />
+            <span className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider">
+              Mid-execution
+            </span>
+          </div>
+          <span className="text-[8px] text-text-secondary leading-tight block mt-0.5">
+            Step-by-step check is active (step {stepCount}).
+          </span>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div className="flex items-center gap-1">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400/40" />
+          <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider">
+            Not Started
+          </span>
+        </div>
+        <span className="text-[8px] text-text-muted leading-tight block mt-0.5">
+          Press Play or Step to run machine.
+        </span>
+      </>
+    );
+  };
 
   const { activeScenarios, customScenarios, scenarioProgress, addActiveScenario, removeActiveScenario, clearActiveScenarios, addCustomScenario } =
     useScenariosStore();
@@ -310,10 +480,28 @@ export const ScenarioLibrary: React.FC<{
                       />
                     </button>
                     {selectedPreset === sc.id && (
-                      <div className="px-2 pb-2 text-[10px] text-text-secondary leading-tight flex flex-col gap-3">
+                      <div className="px-2 pb-2 text-[10px] text-text-secondary leading-tight flex flex-col gap-3 pt-1">
                         <p className="border-l-2 border-primary-base/30 pl-2 text-text-primary">
-                          {sc.description}
+                          {parseExpectedOutcome(sc.description).description}
                         </p>
+                        
+                        {parseExpectedOutcome(sc.description).expected && (
+                          <div className="bg-bg-element/50 border border-border-main/60 rounded p-2 flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[8px] font-bold uppercase tracking-wider text-text-muted">
+                                Expected Outcome
+                              </span>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold rounded-full border ${getExpectedColorInfo(sc).bgClass}`}>
+                                <span className={`w-1 h-1 rounded-full ${getExpectedColorInfo(sc).dotClass}`} />
+                                {getExpectedColorInfo(sc).label}
+                              </span>
+                            </div>
+                            <span className="text-[9px] text-text-secondary leading-normal">
+                              {parseExpectedOutcome(sc.description).expected}
+                            </span>
+                          </div>
+                        )}
+
                         <button
                           onClick={() => handleLoadToActive(sc)}
                           className="w-full bg-bg-panel border border-border-main text-text-primary font-bold py-1.5 rounded hover:bg-bg-element hover:border-border-active hover:text-primary-base transition-colors flex items-center justify-center gap-1 shadow-sm"
@@ -394,9 +582,44 @@ export const ScenarioLibrary: React.FC<{
                           {status}
                         </div>
                       </div>
-                      <div className="text-[10px] text-text-muted mt-1 leading-tight line-clamp-2">
-                        {sc.description}
+                      <div className="text-[10px] text-text-muted mt-1 leading-tight">
+                        {activeInstanceDetails?.id === sc.id 
+                          ? parseExpectedOutcome(sc.description).description
+                          : sc.description
+                        }
                       </div>
+
+                      {activeInstanceDetails?.id === sc.id && (
+                        <div className="mt-2.5 pt-2 border-t border-border-main/40 grid grid-cols-2 gap-2 text-left">
+                          {/* Expected Block */}
+                          <div className="bg-bg-surface/60 border border-border-main/50 rounded p-1.5 flex flex-col justify-between min-h-[58px]">
+                            <div>
+                              <span className="text-[7.5px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                Expected Outcome
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className={`inline-block w-1.5 h-1.5 rounded-full ${getExpectedColorInfo(sc).dotClass}`} />
+                                <span className="text-[8.5px] font-bold text-text-primary leading-none">
+                                  {getExpectedColorInfo(sc).label}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="text-[8px] text-text-secondary leading-normal block mt-1 line-clamp-3">
+                              {parseExpectedOutcome(sc.description).expected || "Halt in success state."}
+                            </span>
+                          </div>
+
+                          {/* Actual Block */}
+                          <div className="bg-bg-surface/60 border border-border-main/50 rounded p-1.5 flex flex-col justify-between min-h-[58px]">
+                            <div>
+                              <span className="text-[7.5px] font-bold text-text-muted uppercase tracking-wider block mb-[3px]">
+                                Actual Result
+                              </span>
+                              {getActualResultInfo(sc.id)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </button>
                     <button
                       onClick={(e) => {
