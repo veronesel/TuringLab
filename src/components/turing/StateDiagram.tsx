@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useCallback } from 'react';
 import { ReactFlow, Controls, ControlButton, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges, MiniMap, Connection, getNodesBounds, getViewportForBounds, Panel, useOnViewportChange } from '@xyflow/react';
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force';
 import { motion } from 'motion/react';
-import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, MousePointerClick, Crosshair, Grid } from 'lucide-react';
+import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, MousePointerClick, Crosshair, Grid, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import '@xyflow/react/dist/style.css';
 import { useTMStore } from '../../store/tmStore';
@@ -1750,13 +1750,28 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
             </ControlButton>
           </Controls>
           {onExplainLogic && (
-            <Panel position="top-left" className="explain-panel">
+            <Panel position="top-left" className="explain-panel flex items-center gap-2 select-none">
               <button 
                 onClick={onExplainLogic}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold bg-bg-surface text-primary-base border border-border-main rounded hover:bg-bg-element shadow-sm transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold bg-bg-surface text-primary-base border border-border-main rounded hover:bg-bg-element shadow-sm transition-colors cursor-pointer"
               >
                 <BrainCircuit size={12} /> EXPLAIN LOGIC
               </button>
+              {status === 'accepted' && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-extrabold text-green-500 bg-green-500/10 border border-green-500/20 rounded shadow-sm uppercase tracking-wider font-mono">
+                  <CheckCircle2 size={12} /> SIMULATION ACCEPTED
+                </span>
+              )}
+              {status === 'rejected' && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-extrabold text-red-500 bg-red-500/10 border border-red-500/20 rounded shadow-sm uppercase tracking-wider font-mono">
+                  <XCircle size={12} /> SIMULATION REJECTED
+                </span>
+              )}
+              {status === 'error' && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-extrabold text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded shadow-sm uppercase tracking-wider font-mono">
+                  <AlertTriangle size={12} /> SIMULATION ERROR
+                </span>
+              )}
             </Panel>
           )}
           {showLegend && (

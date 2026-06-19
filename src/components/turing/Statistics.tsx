@@ -1,6 +1,173 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTMStore } from '../../store/tmStore';
+import { useThemeStore } from '../../store/themeStore';
+import { playSubtleClick } from '../../utils/audio';
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { 
+  History, 
+  ChevronLeft, 
+  ChevronRight, 
+  SkipBack, 
+  SkipForward, 
+  Play, 
+  Pause 
+} from 'lucide-react';
+
+const HistoryScrubber: React.FC = () => {
+  const history = useTMStore(state => state.history);
+  const historyIndex = useTMStore(state => state.historyIndex);
+  const jumpToStep = useTMStore(state => state.jumpToStep);
+  const isRunning = useTMStore(state => state.isRunning);
+  const status = useTMStore(state => state.status);
+  const run = useTMStore(state => state.run);
+  const pause = useTMStore(state => state.pause);
+  const activeScenario = useTMStore(state => state.activeScenario);
+
+  const handleStepChange = (val: number) => {
+    if (val < 0 || val >= history.length) return;
+    jumpToStep(val);
+    if (useThemeStore.getState().soundEnabled) {
+      playSubtleClick();
+    }
+  };
+
+  const handlePrev = () => {
+    if (historyIndex > 0) {
+      handleStepChange(historyIndex - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (historyIndex < history.length - 1) {
+      handleStepChange(historyIndex + 1);
+    }
+  };
+
+  const currentEntry = history[historyIndex];
+  const maxStep = Math.max(0, history.length - 1);
+
+  return (
+    <div className="bg-bg-panel border border-border-active rounded-lg p-3 shadow-md flex flex-col gap-2.5 mb-2">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-1.5 text-primary-base font-bold text-[10px] uppercase tracking-wider">
+          <History size={12} className="text-primary-base" />
+          <span>Execution History Scrubber</span>
+        </div>
+        <div className="flex items-center gap-1.5 font-mono text-[9px] bg-bg-surface px-2 py-0.5 rounded border border-border-main text-text-secondary select-none">
+          <span className="text-primary-base font-bold">STEP {historyIndex}</span>
+          <span className="text-text-faint">/</span>
+          <span>{maxStep}</span>
+        </div>
+      </div>
+
+      {/* Main Slider Row */}
+      <div className="relative flex items-center gap-3 bg-bg-surface p-2 rounded border border-border-main select-none">
+        <span className="text-[9px] font-mono text-text-faint w-4 text-center">0</span>
+        <div className="relative flex-1 h-6 flex items-center">
+          <input 
+            type="range" 
+            min="0" 
+            max={maxStep} 
+            value={historyIndex}
+            onChange={(e) => handleStepChange(parseInt(e.target.value, 10))}
+            disabled={history.length <= 1 || isRunning}
+            className="w-full h-1.5 rounded-lg appearance-none bg-bg-panel cursor-pointer accent-primary-base focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed z-10" 
+            title="Drag left or right to scrub steps"
+            style={{
+              background: 'transparent',
+            }}
+          />
+          {/* Progress bar overlay under slider track */}
+          <div 
+            className="absolute left-0 h-1.5 bg-primary-base/30 rounded-l-lg pointer-events-none"
+            style={{ width: `${maxStep > 0 ? (historyIndex / maxStep) * 100 : 0}%` }}
+          />
+          {/* Custom track bg */}
+          <div className="absolute inset-x-0 h-1.5 bg-bg-panel rounded-lg pointer-events-none -z-10" />
+        </div>
+        <span className="text-[9px] font-mono text-text-faint w-6 text-center">{maxStep}</span>
+      </div>
+
+      {/* Button deck & Current step metadata info */}
+      <div className="flex flex-wrap justify-between items-center gap-2">
+        {/* Playback Controls button layout */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => handleStepChange(0)}
+            disabled={historyIndex === 0 || isRunning}
+            title="Rewind to step 0"
+            className="p-1 px-1.5 bg-bg-surface border border-border-main rounded text-text-secondary hover:bg-border-active hover:text-text-primary disabled:opacity-30 disabled:hover:bg-bg-surface transition-colors"
+          >
+            <SkipBack size={11} />
+          </button>
+          
+          <button
+            onClick={handlePrev}
+            disabled={historyIndex === 0 || isRunning}
+            title="Step backward"
+            className="p-1 px-1.5 bg-bg-surface border border-border-main rounded text-text-secondary hover:bg-border-active hover:text-text-primary disabled:opacity-30 disabled:hover:bg-bg-surface transition-colors"
+          >
+            <ChevronLeft size={11} />
+          </button>
+
+          {isRunning ? (
+            <button
+              onClick={pause}
+              title="Pause continuous simulation"
+              className="p-1 px-2 bg-primary-dark border border-primary-base rounded text-text-primary hover:bg-primary-base transition-colors flex items-center gap-1 text-[9px] font-bold"
+            >
+              <Pause size={9} />
+              <span>PAUSE</span>
+            </button>
+          ) : (
+            <button
+              onClick={run}
+              disabled={history.length <= 1 || ((status === 'accepted' || status === 'rejected' || status === 'error') && historyIndex === maxStep)}
+              title="Play simulation continuously"
+              className="p-1 px-2 bg-bg-surface border border-border-main rounded text-text-secondary hover:bg-border-active pr-2.5 transition-colors flex items-center gap-1 text-[9px] font-bold disabled:opacity-30"
+            >
+              <Play size={9} className="text-emerald-400" />
+              <span>PLAY</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleNext}
+            disabled={historyIndex === maxStep || isRunning}
+            title="Step forward"
+            className="p-1 px-1.5 bg-bg-surface border border-border-main rounded text-text-secondary hover:bg-border-active hover:text-text-primary disabled:opacity-30 disabled:hover:bg-bg-surface transition-colors"
+          >
+            <ChevronRight size={11} />
+          </button>
+
+          <button
+            onClick={() => handleStepChange(maxStep)}
+            disabled={historyIndex === maxStep || isRunning}
+            title="Fast forward to latest event"
+            className="p-1 px-1.5 bg-bg-surface border border-border-main rounded text-text-secondary hover:bg-border-active hover:text-text-primary disabled:opacity-30 disabled:hover:bg-bg-surface transition-colors"
+          >
+            <SkipForward size={11} />
+          </button>
+        </div>
+
+        {/* Current status display row */}
+        {currentEntry && (
+          <div className="flex items-center gap-1.5 text-[9px] font-mono select-none overflow-hidden text-right">
+            <span className="text-text-faint">State:</span>
+            <span 
+              className="px-1 py-0.5 rounded font-bold text-text-primary text-[8px] border border-black/10 shadow-sm"
+              style={{ backgroundColor: activeScenario?.stateColors?.[currentEntry.currentState] || 'var(--color-primary-base)' }}
+            >
+              {currentEntry.currentState}
+            </span>
+            <span className="text-text-faint ml-1">Head:</span>
+            <span className="font-bold text-text-secondary">@{currentEntry.headPosition}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const StateHeatmap: React.FC = () => {
   const history = useTMStore(state => state.history);
@@ -366,6 +533,7 @@ export const Statistics: React.FC = () => {
 
   return (
     <div className="bg-bg-panel p-3 overflow-y-auto flex flex-col font-sans flex-1 min-h-0 min-w-0">
+      <HistoryScrubber />
       <TimeComplexityChart />
 
       <div className="flex justify-between items-center mt-4 mb-2 min-w-0 flex-wrap gap-2 border-t border-border-main pt-3">

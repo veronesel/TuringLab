@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { TMRule, Direction } from '../../types/tm';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, FileText, Table, Search, X, GripVertical, Palette } from 'lucide-react';
+import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, AlertCircle, RotateCw, FileText, Table, Search, X, GripVertical, Palette } from 'lucide-react';
 import { AutocompleteInput } from './AutocompleteInput';
 import { playSubtleClick } from '../../utils/audio';
 
@@ -180,7 +180,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   }, [rules]);
 
   // Real-time linter for conflicting transitions and unreachable states
-  const { conflicts, unreachableStates, conflictMessages } = React.useMemo(() => {
+  const { conflicts, unreachableStates, conflictMessages, infiniteLoops, loopMessages } = React.useMemo(() => {
     const conflictsSet = new Set<string>();
     const unreachableStatesSet = new Set<string>();
     const conflictMsgs: Record<string, string> = {};
@@ -236,10 +236,71 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
       }
     });
 
+    // 4. Detect Trivial Endless Loops (Cycles of S-moves)
+    const infiniteLoopsSet = new Set<string>();
+    const loopMsgs: Record<string, string> = {};
+
+    const sEdges = new Map<string, { to: string, ruleId: string }[]>();
+    localRules.forEach(r => {
+      const dir = (r.moveDirection || 'S').trim().toUpperCase();
+      if (dir === 'S') {
+        const from = `${r.currentState.trim()}|${r.readSymbol.trim() || '_'}`;
+        const to = `${r.nextState.trim()}|${r.writeSymbol.trim() || '_'}`;
+        if (!sEdges.has(from)) sEdges.set(from, []);
+        sEdges.get(from)!.push({ to, ruleId: r.id });
+      }
+    });
+
+    // Simple DFS for cycle detection
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    const path: { node: string, ruleId: string }[] = [];
+
+    const detectCycles = (node: string) => {
+      visited.add(node);
+      recursionStack.add(node);
+
+      const edges = sEdges.get(node) || [];
+      for (const edge of edges) {
+        path.push({ node: edge.to, ruleId: edge.ruleId });
+        
+        if (!visited.has(edge.to)) {
+          detectCycles(edge.to);
+        } else if (recursionStack.has(edge.to)) {
+          // Cycle found!
+          // Identify the rules involved in the cycle
+          const cycleStartIndex = path.findIndex(p => p.node === edge.to);
+          const cycleRules = path.slice(cycleStartIndex).map(p => p.ruleId);
+          
+          if (cycleRules.length === 1) {
+            infiniteLoopsSet.add(cycleRules[0]);
+            loopMsgs[cycleRules[0]] = "Trivial Infinite Loop: This rule transitions to itself without moving the head (S). Execution will hang.";
+          } else {
+            cycleRules.forEach(ruleId => {
+              infiniteLoopsSet.add(ruleId);
+              loopMsgs[ruleId] = "Infinite Loop Cycle: This rule is part of a cycle of stationary (S) moves that will loop infinitely. Execution will hang.";
+            });
+          }
+        }
+        
+        path.pop();
+      }
+
+      recursionStack.delete(node);
+    };
+
+    sEdges.forEach((_, node) => {
+      if (!visited.has(node)) {
+        detectCycles(node);
+      }
+    });
+
     return {
       conflicts: conflictsSet,
       unreachableStates: unreachableStatesSet,
-      conflictMessages: conflictMsgs
+      conflictMessages: conflictMsgs,
+      infiniteLoops: infiniteLoopsSet,
+      loopMessages: loopMsgs
     };
   }, [localRules, activeScenario]);
 
@@ -247,7 +308,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const validationIssues = React.useMemo(() => {
     const issues: {
       id: string;
-      type: 'conflict' | 'unreachable';
+      type: 'conflict' | 'unreachable' | 'infinite_loop';
       title: string;
       description: string;
       ruleId: string;
@@ -262,6 +323,20 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
           type: 'conflict',
           title: `Deterministic Conflict`,
           description: conflictMessages[rule.id] || `Conflicts with another state/symbol transition configuration.`,
+          ruleId: rule.id,
+          ruleNum: idx + 1
+        });
+      }
+    });
+
+    // Process infinite loops
+    localRules.forEach((rule, idx) => {
+      if (infiniteLoops.has(rule.id)) {
+        issues.push({
+          id: `loop-${rule.id}`,
+          type: 'infinite_loop',
+          title: `Infinite Loop Detected`,
+          description: loopMessages[rule.id] || `This rule causes an infinite execution loop.`,
           ruleId: rule.id,
           ruleNum: idx + 1
         });
@@ -285,7 +360,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
     });
 
     return issues;
-  }, [localRules, conflicts, unreachableStates, conflictMessages]);
+  }, [localRules, conflicts, unreachableStates, conflictMessages, infiniteLoops, loopMessages]);
 
   const jumpToRule = (ruleId: string) => {
     const element = document.getElementById(`rule-row-${ruleId}`);
@@ -362,6 +437,11 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
         }));
         setLocalRules(rulesWithIds);
         setRules(rulesWithIds);
+        
+        // Clear any active simulation rejection/error warnings
+        if (useTMStore.getState().status === 'rejected' || useTMStore.getState().status === 'error') {
+          useTMStore.setState({ status: 'idle', errorMessage: null });
+        }
       }
     } catch (err) {
       console.error(err);
@@ -789,6 +869,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
               <div className="max-h-[140px] overflow-y-auto divide-y divide-[#1c1212] select-none">
                 {validationIssues.map(issue => {
                   const isConflict = issue.type === 'conflict';
+                  const isLoop = issue.type === 'infinite_loop';
                   return (
                     <div
                       key={issue.id}
@@ -798,13 +879,15 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                       <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide leading-none font-sans ${
                         isConflict 
                           ? 'bg-red-500/10 text-red-400 border border-red-500/20' 
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          : isLoop 
+                            ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                       }`}>
-                        {isConflict ? 'Conflict' : 'Unreachable'}
+                        {isConflict ? 'Conflict' : isLoop ? 'Loop' : 'Unreachable'}
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="text-text-primary font-bold flex items-center gap-1">
-                          <span className={`${isConflict ? 'text-red-300' : 'text-amber-300'}`}>{issue.title}</span>
+                          <span className={`${isConflict ? 'text-red-300' : isLoop ? 'text-purple-300' : 'text-amber-300'}`}>{issue.title}</span>
                           <span className="text-[8px] text-text-faint font-sans font-semibold">Row #{issue.ruleNum} ➜</span>
                         </div>
                         <p className="text-text-muted text-[9px] leading-relaxed mt-0.5 break-words">
@@ -846,6 +929,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                   const isConflicting = conflicts.has(rule.id);
                   const curStateTrimmed = rule.currentState.trim();
                   const isUnreachable = unreachableStates.has(curStateTrimmed) && curStateTrimmed !== '';
+                  const isLoop = infiniteLoops.has(rule.id);
                   const isHighlighted = highlightedRuleId === rule.id;
                   
                   const getStateClass = (s: string) => {
@@ -927,15 +1011,29 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           </>
                         )}
                         {isConflicting ? (
-                          <span 
-                            className="absolute right-1 top-[5px] w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse cursor-help" 
-                            title={conflictMessages[rule.id]} 
-                          />
+                          <span className="absolute right-1 top-1/2 -translate-y-1/2 cursor-help" title={conflictMessages[rule.id]}>
+                            <AlertTriangle 
+                              size={10} 
+                              strokeWidth={3}
+                              className="text-red-500" 
+                            />
+                          </span>
+                        ) : isLoop ? (
+                          <span className="absolute right-1 top-1/2 -translate-y-1/2 cursor-help" title={loopMessages[rule.id]}>
+                            <RotateCw 
+                              size={10}
+                              strokeWidth={3}
+                              className="text-purple-500 animate-[spin_3s_linear_infinite]" 
+                            />
+                          </span>
                         ) : isUnreachable ? (
-                          <span 
-                            className="absolute right-1 top-[5px] w-1.5 h-1.5 rounded-full bg-amber-500 cursor-help" 
-                            title={`Unreachable state: No transitions lead to state "${curStateTrimmed}"`} 
-                          />
+                          <span className="absolute right-1 top-1/2 -translate-y-1/2 cursor-help" title={`Unreachable state: No transitions lead to state "${curStateTrimmed}"`}>
+                            <AlertCircle 
+                              size={10}
+                              strokeWidth={3}
+                              className="text-amber-500" 
+                            />
+                          </span>
                         ) : null}
                         <span className={isExecutingRow ? 'text-primary-base font-extrabold pl-2.5' : ''}>{index + 1}</span>
                       </td>

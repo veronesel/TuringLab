@@ -18,7 +18,8 @@ import { ShortcutsModal } from './components/turing/ShortcutsModal';
 import { SettingsModal } from './components/turing/SettingsModal';
 import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
 import { FloatingWindow } from './components/turing/FloatingWindow';
-import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus, Volume2, VolumeX } from 'lucide-react';
+import { RejectionExplanationModal } from './components/turing/RejectionExplanationModal';
+import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus, Volume2, VolumeX, BookOpen } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
 import { Breadcrumb } from './components/ui/Breadcrumb';
@@ -80,12 +81,77 @@ export default function App() {
   };
 
   const [isTourActive, setIsTourActive] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'rules' | 'stats' | 'debugger'>('rules');
   
+  const [autosavePrompt, setAutosavePrompt] = useState<{ timestamp: number; data: any } | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('tm-autosave');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.timestamp && parsed.data) {
+          const hasContent = parsed.data.rules?.length > 0 || Object.keys(parsed.data.tape || {}).length > 0;
+          if (hasContent) {
+            setAutosavePrompt(parsed);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse tm-autosave", e);
+    }
+  }, []);
+
+  const handleResumeAutosave = () => {
+    if (autosavePrompt?.data) {
+      useTMStore.getState().importConfiguration(autosavePrompt.data);
+    }
+    setAutosavePrompt(null);
+  };
+
+  const handleDismissAutosave = () => {
+    setAutosavePrompt(null);
+  };
+  
+  const PRESET_LAYOUTS = {
+    custom: {
+      h: [20, 80],
+      centerH: [70, 30],
+      centerV: [35, 65]
+    },
+    default: {
+      h: [18, 82],
+      centerH: [70, 30],
+      centerV: [30, 70]
+    },
+    library: {
+      h: [32, 68],
+      centerH: [68, 32],
+      centerV: [35, 65]
+    },
+    diagram: {
+      h: [15, 85],
+      centerH: [75, 25],
+      centerV: [20, 80]
+    },
+    rules: {
+      h: [15, 85],
+      centerH: [55, 45],
+      centerV: [28, 72]
+    },
+    tape: {
+      h: [16, 84],
+      centerH: [72, 28],
+      centerV: [55, 45]
+    }
+  };
+
   const [activeLayoutId, setActiveLayoutId] = useState('turing-layout-custom');
   const [layoutResetKey, setLayoutResetKey] = useState(0);
   const [detachedPanels, setDetachedPanels] = useState<string[]>([]);
@@ -123,9 +189,9 @@ export default function App() {
   );
 
   const renderDebuggerPanel = () => (
-    <footer data-tour="stats" className="w-full h-full border-t border-border-main bg-bg-surface flex shrink-0 z-10 flex-col">
+    <div data-tour="stats" className="w-full h-full bg-bg-surface flex flex-col min-h-0 min-w-0">
       <Debugger />
-    </footer>
+    </div>
   );
 
   const DetachableWrapper = ({ id, children }: { id: string, children: React.ReactNode }) => (
@@ -169,13 +235,12 @@ export default function App() {
     setLayoutResetKey(prev => prev + 1);
   };
   
-  const handleLayoutPreset = (preset: 'default' | 'diagram' | 'custom') => {
+  const handleLayoutPreset = (preset: 'custom' | 'default' | 'library' | 'diagram' | 'rules' | 'tape') => {
     setActiveLayoutId(`turing-layout-${preset}`);
-    if (preset === 'default') {
-      localStorage.removeItem('react-resizable-panels:turing-layout-default');
-    } else if (preset === 'diagram') {
-      localStorage.removeItem('react-resizable-panels:turing-layout-diagram');
-    }
+    localStorage.removeItem(`react-resizable-panels:turing-layout-${preset}-h`);
+    localStorage.removeItem(`react-resizable-panels:turing-layout-${preset}-center-h`);
+    localStorage.removeItem(`react-resizable-panels:turing-layout-${preset}-center-v`);
+    setLayoutResetKey(prev => prev + 1);
   };
 
   const { themeMode, colorSchema, toggleThemeMode, setColorSchema, soundEnabled, setSoundEnabled } = useThemeStore();
@@ -202,10 +267,18 @@ export default function App() {
   const redoEdit = useTMStore(state => state.redoEdit);
   const editHistoryIndex = useTMStore(state => state.editHistoryIndex);
   const editHistory = useTMStore(state => state.editHistory);
+  const status = useTMStore(state => state.status);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAliasPanelOpen, setIsAliasPanelOpen] = useState(false);
+  const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
   const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (status === 'rejected') {
+      setIsRejectionModalOpen(true);
+    }
+  }, [status]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -662,9 +735,12 @@ export default function App() {
               onChange={e => handleLayoutPreset(e.target.value as any)}
               className="bg-transparent text-[10px] font-bold text-text-secondary outline-none px-1 py-1 uppercase appearance-none cursor-pointer"
             >
-              <option value="custom" className="bg-bg-panel">Custom Layout</option>
-              <option value="default" className="bg-bg-panel">Default Focus</option>
+              <option value="custom" className="bg-bg-panel">Custom Grid</option>
+              <option value="default" className="bg-bg-panel">Classic Workspace</option>
+              <option value="library" className="bg-bg-panel">Library Focus</option>
               <option value="diagram" className="bg-bg-panel">Diagram Focus</option>
+              <option value="rules" className="bg-bg-panel">Rules Builder Focus</option>
+              <option value="tape" className="bg-bg-panel">Tape Player Focus</option>
             </select>
             <button 
               onClick={resetLayout}
@@ -689,6 +765,19 @@ export default function App() {
             className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold bg-[#1d4ed8]/20 text-[#93c5fd] border border-[#3b82f6]/30 rounded hover:bg-[#1d4ed8]/40 transition-colors"
           >
             <HelpCircle size={12} /> GUIDED TOUR
+          </button>
+          
+          <button 
+            onClick={() => setIsHelpOpen(!isHelpOpen)}
+            className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold border rounded transition-all duration-150 ${
+              isHelpOpen 
+                ? 'bg-sky-500/20 text-sky-400 border-sky-400/40 hover:bg-sky-500/30 shadow-inner' 
+                : 'bg-bg-element text-text-secondary border-border-main hover:bg-bg-element/80'
+            }`}
+            title="Toggle system manual and capabilities explorer"
+          >
+            <BookOpen size={12} className={isHelpOpen ? 'animate-pulse text-sky-400' : 'text-text-secondary'} />
+            <span className={isHelpOpen ? 'text-sky-400' : ''}>HELP COMPANION</span>
           </button>
           
           <div className="h-4 w-px bg-border-main"></div>
@@ -734,174 +823,227 @@ export default function App() {
 
       {/* Main Workspace */}
       <PanelGroup 
-        key={`${activeLayoutId}-v-${layoutResetKey}`}
-        id={`${activeLayoutId}-v`}
-        orientation="vertical" 
-        className="flex-1 overflow-hidden min-h-0 min-w-0"
+        key={`${activeLayoutId}-h-${layoutResetKey}`}
+        id={`${activeLayoutId}-h`}
+        orientation="horizontal" 
+        className="w-full flex-1 min-h-0 min-w-0"
         onLayoutChanged={(layout) => {
           if (activeLayoutId === 'turing-layout-custom') {
-            localStorage.setItem('react-resizable-panels:turing-layout-custom-v', JSON.stringify(layout));
+            localStorage.setItem('react-resizable-panels:turing-layout-custom-h', JSON.stringify(layout));
           }
         }}
         defaultLayout={
-          activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-v') 
-            ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-v')!) 
-            : undefined
+          activeLayoutId === 'turing-layout-custom'
+            ? (localStorage.getItem('react-resizable-panels:turing-layout-custom-h') 
+                ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-h')!) 
+                : PRESET_LAYOUTS.custom.h)
+            : (PRESET_LAYOUTS[activeLayoutId.replace('turing-layout-', '') as keyof typeof PRESET_LAYOUTS] || PRESET_LAYOUTS.default).h
         }
       >
-        <Panel defaultSize={80} minSize={50} className="min-h-0 min-w-0 flex flex-col">
+        
+        {/* Left Sidebar */}
+        <Panel 
+          panelRef={sidebarPanelRef}
+          defaultSize={20} 
+          minSize={15} 
+          collapsible={true}
+          collapsedSize={4}
+          onResize={() => {
+            const isCollapsed = sidebarPanelRef.current?.isCollapsed();
+            setIsSidebarCollapsed(isCollapsed || false);
+          }}
+          className="min-h-0 min-w-0 flex flex-col"
+        >
+          <div data-tour="library" className="w-full h-full z-10 block border-r border-border-main min-h-0 min-w-0">
+            <ScenarioLibrary 
+              isCollapsed={isSidebarCollapsed}
+              onToggleCollapse={() => {
+                const panel = sidebarPanelRef.current;
+                if (panel) {
+                  if (panel.isCollapsed()) panel.expand();
+                  else panel.collapse();
+                }
+              }}
+            />
+          </div>
+        </Panel>
+
+        {renderHandle('horizontal')}
+
+        {/* Center & Right Sidebar */}
+        <Panel defaultSize={80} minSize={20} className="min-h-0 min-w-0 flex flex-col">
           <PanelGroup 
-            key={`${activeLayoutId}-h-${layoutResetKey}`}
-            id={`${activeLayoutId}-h`}
-            orientation="horizontal" 
+            key={`${activeLayoutId}-center-h-${layoutResetKey}`}
+            id={`${activeLayoutId}-center-h`}
+            orientation="horizontal"
             className="w-full h-full min-h-0 min-w-0"
             onLayoutChanged={(layout) => {
               if (activeLayoutId === 'turing-layout-custom') {
-                localStorage.setItem('react-resizable-panels:turing-layout-custom-h', JSON.stringify(layout));
+                localStorage.setItem('react-resizable-panels:turing-layout-custom-center-h', JSON.stringify(layout));
               }
             }}
             defaultLayout={
-              activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-h') 
-                ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-h')!) 
-                : undefined
+              activeLayoutId === 'turing-layout-custom'
+                ? (localStorage.getItem('react-resizable-panels:turing-layout-custom-center-h') 
+                    ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-center-h')!) 
+                    : PRESET_LAYOUTS.custom.centerH)
+                : (PRESET_LAYOUTS[activeLayoutId.replace('turing-layout-', '') as keyof typeof PRESET_LAYOUTS] || PRESET_LAYOUTS.default).centerH
             }
           >
-            
-            {/* Left Sidebar */}
-            <Panel 
-              panelRef={sidebarPanelRef}
-              defaultSize={20} 
-              minSize={15} 
-              collapsible={true}
-              collapsedSize={4}
-              onResize={() => {
-                const isCollapsed = sidebarPanelRef.current?.isCollapsed();
-                setIsSidebarCollapsed(isCollapsed || false);
-              }}
-              className="min-h-0 min-w-0 flex flex-col"
-            >
-              <div data-tour="library" className="w-full h-full z-10 block border-r border-border-main min-h-0 min-w-0">
-                <ScenarioLibrary 
-                  isCollapsed={isSidebarCollapsed}
-                  onToggleCollapse={() => {
-                    const panel = sidebarPanelRef.current;
-                    if (panel) {
-                      if (panel.isCollapsed()) panel.expand();
-                      else panel.collapse();
-                    }
-                  }}
-                />
-              </div>
-            </Panel>
-
-            {renderHandle('horizontal')}
-
-            {/* Center & Right */}
-            <Panel defaultSize={80} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+            {/* Center Panel (Tape and Diagram) */}
+            <Panel defaultSize={70} minSize={10} className="min-h-0 min-w-0 flex flex-col">
               <PanelGroup 
-                key={`${activeLayoutId}-center-h-${layoutResetKey}`}
-                id={`${activeLayoutId}-center-h`}
-                orientation="horizontal"
-                className="w-full h-full min-h-0 min-w-0"
+                key={`${activeLayoutId}-center-v-${layoutResetKey}`}
+                id={`${activeLayoutId}-center-v`}
+                orientation="vertical"
+                className="w-full h-full min-h-0 min-w-0 bg-bg-base"
                 onLayoutChanged={(layout) => {
                   if (activeLayoutId === 'turing-layout-custom') {
-                    localStorage.setItem('react-resizable-panels:turing-layout-custom-center-h', JSON.stringify(layout));
+                    localStorage.setItem('react-resizable-panels:turing-layout-custom-center-v', JSON.stringify(layout));
                   }
                 }}
                 defaultLayout={
-                  activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-center-h') 
-                    ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-center-h')!) 
-                    : undefined
+                  activeLayoutId === 'turing-layout-custom'
+                    ? (localStorage.getItem('react-resizable-panels:turing-layout-custom-center-v') 
+                        ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-center-v')!) 
+                        : PRESET_LAYOUTS.custom.centerV)
+                    : (PRESET_LAYOUTS[activeLayoutId.replace('turing-layout-', '') as keyof typeof PRESET_LAYOUTS] || PRESET_LAYOUTS.default).centerV
                 }
               >
-                <Panel defaultSize={70} minSize={10} className="min-h-0 min-w-0 flex flex-col">
-                  <PanelGroup 
-                    key={`${activeLayoutId}-center-v-${layoutResetKey}`}
-                    id={`${activeLayoutId}-center-v`}
-                    orientation="vertical"
-                    className="w-full h-full min-h-0 min-w-0 bg-bg-base"
-                    onLayoutChanged={(layout) => {
-                      if (activeLayoutId === 'turing-layout-custom') {
-                        localStorage.setItem('react-resizable-panels:turing-layout-custom-center-v', JSON.stringify(layout));
-                      }
-                    }}
-                    defaultLayout={
-                      activeLayoutId === 'turing-layout-custom' && localStorage.getItem('react-resizable-panels:turing-layout-custom-center-v') 
-                        ? JSON.parse(localStorage.getItem('react-resizable-panels:turing-layout-custom-center-v')!) 
-                        : undefined
-                    }
-                  >
-                    {!detachedPanels.includes('tape') && (
-                      <Panel defaultSize={35} minSize={15} className="min-h-0 min-w-0 flex flex-col">
-                        <DetachableWrapper id="tape">
-                          {renderTapePanel()}
-                        </DetachableWrapper>
-                      </Panel>
-                    )}
-                    
-                    {!detachedPanels.includes('tape') && !detachedPanels.includes('diagram') && renderHandle('vertical')}
-                    
-                    {!detachedPanels.includes('diagram') && (
-                      <Panel defaultSize={65} minSize={20} className="min-h-0 min-w-0 flex flex-col">
-                        <DetachableWrapper id="diagram">
-                          {renderDiagramPanel()}
-                        </DetachableWrapper>
-                      </Panel>
-                    )}
-
-                    {detachedPanels.includes('tape') && detachedPanels.includes('diagram') && (
-                      <Panel defaultSize={100} className="bg-bg-panel/50 hidden" />
-                    )}
-                  </PanelGroup>
-                </Panel>
+                {!detachedPanels.includes('tape') && (
+                  <Panel defaultSize={35} minSize={30} className="min-h-0 min-w-0 flex flex-col">
+                    <DetachableWrapper id="tape">
+                      {renderTapePanel()}
+                    </DetachableWrapper>
+                  </Panel>
+                )}
                 
-                {activeLayoutId !== 'turing-layout-diagram' && (!detachedPanels.includes('rules') || !detachedPanels.includes('stats')) && (
-                  <>
-                    {renderHandle('horizontal')}
-                    <Panel defaultSize={30} minSize={10} className="min-h-0 min-w-0 flex flex-col">
-                      <aside data-tour="rules" className="w-full h-full bg-bg-surface flex flex-col z-10 border-l border-border-main min-h-0 min-w-0">
-                        <PanelGroup orientation="vertical">
-                          {!detachedPanels.includes('rules') && (
-                            <Panel defaultSize={60} minSize={20} className="min-h-0 min-w-0 flex flex-col">
-                              <DetachableWrapper id="rules">
-                                {renderRulesPanel()}
-                              </DetachableWrapper>
-                            </Panel>
-                          )}
-                          {!detachedPanels.includes('rules') && !detachedPanels.includes('stats') && renderHandle('vertical')}
-                          {!detachedPanels.includes('stats') && (
-                            <Panel defaultSize={40} minSize={20} className="min-h-0 min-w-0 flex flex-col">
-                              <DetachableWrapper id="stats">
-                                {renderStatsPanel()}
-                              </DetachableWrapper>
-                            </Panel>
-                          )}
-                        </PanelGroup>
-                      </aside>
-                    </Panel>
-                  </>
+                {!detachedPanels.includes('tape') && !detachedPanels.includes('diagram') && renderHandle('vertical')}
+                
+                {!detachedPanels.includes('diagram') && (
+                  <Panel defaultSize={65} minSize={20} className="min-h-0 min-w-0 flex flex-col">
+                    <DetachableWrapper id="diagram">
+                      {renderDiagramPanel()}
+                    </DetachableWrapper>
+                  </Panel>
+                )}
+
+                {detachedPanels.includes('tape') && detachedPanels.includes('diagram') && (
+                  <Panel defaultSize={100} className="bg-bg-panel/50 hidden" />
                 )}
               </PanelGroup>
             </Panel>
+            
+            {/* Multi-Tab Right Sidebar Panel */}
+            {activeLayoutId !== 'turing-layout-diagram' && (
+              <>
+                {renderHandle('horizontal')}
+                <Panel defaultSize={30} minSize={15} className="min-h-0 min-w-0 flex flex-col">
+                  <aside data-tour="rules" className="w-full h-full bg-bg-surface flex flex-col z-10 border-l border-border-main min-h-0 min-w-0">
+                    
+                    {/* Sidebar Tab Selector Header */}
+                    <div className="flex border-b border-border-main bg-bg-panel p-1 gap-1 shrink-0 select-none">
+                      <button
+                        onClick={() => setActiveSidebarTab('rules')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                          activeSidebarTab === 'rules'
+                            ? 'bg-primary-base text-bg-base shadow-sm font-extrabold'
+                            : 'text-text-secondary hover:bg-bg-element hover:text-text-primary'
+                        }`}
+                        title="Turing Machine Rules Configuration (Row items & conflicts)"
+                      >
+                        <Table size={12} />
+                        <span>Rules</span>
+                      </button>
+                      
+                      <button
+                        onClick={() => setActiveSidebarTab('stats')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                          activeSidebarTab === 'stats'
+                            ? 'bg-primary-base text-bg-base shadow-sm font-extrabold'
+                            : 'text-text-secondary hover:bg-bg-element hover:text-text-primary'
+                        }`}
+                        title="Machine execution counters and dynamic graphs"
+                      >
+                        <LayoutDashboard size={12} />
+                        <span>Stats</span>
+                      </button>
+                      
+                      <button
+                        onClick={() => setActiveSidebarTab('debugger')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                          activeSidebarTab === 'debugger'
+                            ? 'bg-primary-base text-bg-base shadow-sm font-extrabold'
+                            : 'text-text-secondary hover:bg-bg-element hover:text-text-primary'
+                        }`}
+                        title="Step-by-step Simulation History Log"
+                      >
+                        <FileText size={12} />
+                        <span>Log</span>
+                      </button>
+                    </div>
+
+                    {/* Tab Panels Container */}
+                    <div className="flex-1 min-h-0 min-w-0 flex flex-col relative bg-bg-panel">
+                      {activeSidebarTab === 'rules' && (
+                        <div className="w-full h-full min-h-0 min-w-0 flex flex-col">
+                          {!detachedPanels.includes('rules') ? (
+                            <DetachableWrapper id="rules">
+                              {renderRulesPanel()}
+                            </DetachableWrapper>
+                          ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-text-muted bg-bg-surface">
+                              <Table size={24} className="opacity-20 mb-2 text-text-muted" />
+                              <p className="text-[10px] font-mono">Rules Panel is detached</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {activeSidebarTab === 'stats' && (
+                        <div className="w-full h-full min-h-0 min-w-0 flex flex-col">
+                          {!detachedPanels.includes('stats') ? (
+                            <DetachableWrapper id="stats">
+                              {renderStatsPanel()}
+                            </DetachableWrapper>
+                          ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-text-muted bg-bg-surface">
+                              <LayoutDashboard size={24} className="opacity-20 mb-2 text-text-muted" />
+                              <p className="text-[10px] font-mono">Stats Panel is detached</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {activeSidebarTab === 'debugger' && (
+                        <div className="w-full h-full min-h-0 min-w-0 flex flex-col">
+                          {!detachedPanels.includes('debugger') ? (
+                            <DetachableWrapper id="debugger">
+                              {renderDebuggerPanel()}
+                            </DetachableWrapper>
+                          ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-text-muted bg-bg-surface">
+                              <FileText size={24} className="opacity-20 mb-2 text-text-muted" />
+                              <p className="text-[10px] font-mono">Log Panel is detached</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </aside>
+                </Panel>
+              </>
+            )}
           </PanelGroup>
         </Panel>
-
-        {(!detachedPanels.includes('tape') || !detachedPanels.includes('diagram') || !detachedPanels.includes('rules') || !detachedPanels.includes('stats')) && !detachedPanels.includes('debugger') && renderHandle('vertical')}
-
-        {!detachedPanels.includes('debugger') && (
-          <Panel defaultSize={20} minSize={10} className="min-h-0 min-w-0 flex flex-col">
-            <DetachableWrapper id="debugger">
-              {renderDebuggerPanel()}
-            </DetachableWrapper>
-          </Panel>
-        )}
       </PanelGroup>
 
       <AdvancedRuleStudio isOpen={isStudioOpen} onClose={() => setIsStudioOpen(false)} />
       <ShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
       <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} />
       <SymbolAliasesPanel isOpen={isAliasPanelOpen} onClose={() => setIsAliasPanelOpen(false)} />
-      <HelpSidebar />
+      <RejectionExplanationModal isOpen={isRejectionModalOpen} onClose={() => setIsRejectionModalOpen(false)} />
+      <HelpSidebar isOpen={isHelpOpen} setIsOpen={setIsHelpOpen} />
 
       {/* Floating Windows for Detached Panels */}
       {detachedPanels.includes('tape') && (
@@ -934,6 +1076,55 @@ export default function App() {
       {/* Toast Notifications */}
       <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0">
         <AnimatePresence>
+          {autosavePrompt && (
+            <motion.div
+              initial={{ opacity: 0, y: 30, scale: 0.92, x: 20 }}
+              animate={{ opacity: 1, y: 0, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.85, x: 40, transition: { duration: 0.15 } }}
+              layout
+              className="pointer-events-auto bg-bg-panel border border-border-active rounded-xl shadow-2xl p-4 flex flex-col gap-3 backdrop-blur-md relative"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="p-1 rounded-lg bg-primary-base/10 text-primary-base mt-0.5 shrink-0">
+                    <Undo2 size={15} />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold text-text-primary font-sans tracking-wide">
+                      Unsaved Session Found
+                    </h4>
+                    <p className="text-[10px] text-text-muted font-sans mt-0.5 leading-normal truncate">
+                      Would you like to resume your last auto-saved session?
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDismissAutosave}
+                  className="p-1 rounded bg-transparent hover:bg-bg-element text-text-muted hover:text-text-primary transition-colors cursor-pointer shrink-0"
+                  title="Dismiss Auto-Save"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDismissAutosave}
+                  className="flex-1 px-3 py-1.5 rounded bg-bg-surface hover:bg-bg-element text-text-secondary border border-border-main font-bold text-[10px] uppercase tracking-wider transition-colors shadow-sm cursor-pointer select-none"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={handleResumeAutosave}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-primary-base hover:bg-primary-dark text-bg-base font-bold text-[10px] uppercase tracking-wider transition-colors shadow-sm cursor-pointer select-none"
+                >
+                  <Undo2 size={12} />
+                  Resume
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {toasts.map((toast) => (
             <motion.div
               key={toast.id}

@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { TMRule, Direction, TMScenario } from '../../types/tm';
+import { ScenarioDiffModal } from "./ScenarioDiffModal";
+import { AnimatePresence } from "motion/react";
 import { useScenariosStore } from '../../store/scenariosStore';
 import { v4 as uuidv4 } from 'uuid';
 import { 
@@ -300,17 +302,50 @@ export const AdvancedRuleStudio: React.FC<AdvancedRuleStudioProps> = ({ isOpen, 
   };
 
   // Action: AI Generation
+  const [aiContextActive, setAiContextActive] = useState(false);
+  const [previewState, setPreviewState] = useState<{
+    isOpen: boolean;
+    base: TMScenario | null;
+    proposed: TMScenario | null;
+  }>({ isOpen: false, base: null, proposed: null });
+
   const handleAiGenerate = async () => {
     if (!aiPrompt.trim()) return;
     setAiIsGenerating(true);
     setAiError(null);
     try {
+      let baseScenarioContext;
+      if (aiContextActive) {
+        const state = useTMStore.getState();
+        const activeScenario = state.activeScenario;
+        
+        let initialTapeStr = activeScenario ? activeScenario.initialTape : "_";
+        const indices = Object.keys(state.tape).map(Number).sort((a,b)=>a-b);
+        if (indices.length > 0) {
+           const min = Math.min(...indices);
+           const max = Math.max(...indices);
+           let t = "";
+           for(let i=min; i<=max; i++) t += state.tape[i] || '_';
+           initialTapeStr = t;
+        }
+
+        baseScenarioContext = {
+          ...(activeScenario || {}),
+          rules: draftRules, // Give it our current draft rules
+          initialTape: initialTapeStr,
+          customPositions: activeScenario?.customPositions,
+        };
+      }
+
       const res = await fetch("/api/generate-scenario", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ description: aiPrompt }),
+        body: JSON.stringify({ 
+          description: aiPrompt,
+          baseScenario: baseScenarioContext
+        }),
       });
 
       const data = await res.json();
@@ -348,9 +383,57 @@ export const AdvancedRuleStudio: React.FC<AdvancedRuleStudioProps> = ({ isOpen, 
 
   const applyFullAiScenario = () => {
     if (!generatedScenario) return;
-    addActiveScenario(generatedScenario);
-    loadScenario(generatedScenario);
+    
+    // We already have some base scenario context if we wanted to build it,
+    // let's just assemble what we have right now visually.
+    const state = useTMStore.getState();
+    const activeScenario = state.activeScenario;
+    let initialTapeStr = activeScenario ? activeScenario.initialTape : "_";
+    const indices = Object.keys(state.tape).map(Number).sort((a,b)=>a-b);
+    if (indices.length > 0) {
+       const min = Math.min(...indices);
+       const max = Math.max(...indices);
+       let t = "";
+       for(let i=min; i<=max; i++) t += state.tape[i] || '_';
+       initialTapeStr = t;
+    }
+    
+    // The base scenario for the diff
+    const baseScenarioContext = {
+      ...(activeScenario || {}),
+      id: activeScenario?.id || "current",
+      name: activeScenario?.name || "Current State",
+      description: activeScenario?.description || "",
+      category: activeScenario?.category || "",
+      rules: draftRules, // draft rules are what the user currently has edited
+      initialTape: initialTapeStr,
+      customPositions: activeScenario?.customPositions,
+    } as TMScenario;
+
+    setPreviewState({
+      isOpen: true,
+      base: baseScenarioContext,
+      proposed: generatedScenario
+    });
+  };
+
+  const handleApplyPreview = () => {
+    if (!previewState.proposed) return;
+    
+    const formattedScenario: TMScenario = {
+      ...previewState.proposed,
+      id: `ai-gen-${Date.now()}`,
+      category: "AI Generated"
+    };
+
+    addActiveScenario(formattedScenario);
+    loadScenario(formattedScenario);
+    setPreviewState({ isOpen: false, base: null, proposed: null });
     onClose();
+  };
+
+  const handleCancelPreview = () => {
+    setPreviewState({ isOpen: false, base: null, proposed: null });
   };
 
   // Filter the spreadsheet views dynamically
@@ -946,6 +1029,18 @@ export const AdvancedRuleStudio: React.FC<AdvancedRuleStudioProps> = ({ isOpen, 
                         />
                       </div>
 
+                      <label className="flex items-center gap-2 cursor-pointer mt-1">
+                        <input 
+                          type="checkbox" 
+                          checked={aiContextActive} 
+                          onChange={(e) => setAiContextActive(e.target.checked)}
+                          className="accent-[#1d4ed8] cursor-pointer"
+                        />
+                        <span className="text-[11px] text-text-muted font-sans select-none">
+                          Provide active sandbox rules & tape as base context
+                        </span>
+                      </label>
+
                       <button
                         type="button"
                         onClick={handleAiGenerate}
@@ -1518,6 +1613,18 @@ export const AdvancedRuleStudio: React.FC<AdvancedRuleStudioProps> = ({ isOpen, 
             </div>
           </div>
         )}
+
+        <AnimatePresence>
+          {previewState.isOpen && previewState.proposed && (
+            <ScenarioDiffModal
+              isOpen={previewState.isOpen}
+              onClose={handleCancelPreview}
+              onApply={handleApplyPreview}
+              baseScenario={previewState.base}
+              proposedScenario={previewState.proposed}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

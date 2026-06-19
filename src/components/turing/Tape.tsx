@@ -8,7 +8,7 @@ import { twMerge } from 'tailwind-merge';
 import { Undo, Redo, Wand2, X, Palette, MapPin, Settings, Trash2, ChevronDown, ChevronUp, Plus, Eraser, Target, Film } from 'lucide-react';
 import { PatternGeneratorPanel } from './PatternGeneratorPanel';
 
-type TapeSkin = 'default' | 'typewriter' | 'dots' | 'binary';
+type TapeSkin = 'default' | 'typewriter' | 'dots' | 'binary' | 'focus';
 
 const BorderPresets = [
   { name: 'Default Theme', value: 'default', colorCode: '#3b82f6' },
@@ -49,6 +49,84 @@ const getCellBgClass = (borderColorValue: string): string => {
     case 'border-white': return 'bg-white/10';
     default: return 'bg-primary-base/20';
   }
+};
+
+const getTapeSkinStyles = (
+  tapeSkin: TapeSkin,
+  cellValue: string,
+  isHead: boolean,
+  headPosition: number,
+  cellIndex: number,
+  aliasText?: string
+): { skinStyles: string; content: React.ReactNode } => {
+  let skinStyles = "";
+  let content: React.ReactNode = cellValue === '_' ? (
+    <svg style={{width: '0.8em', height: '0.8em'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 18v-6 M18 18v-6 M6 18h12"/>
+    </svg>
+  ) : cellValue;
+
+  if (tapeSkin === 'default') {
+      skinStyles = "font-mono text-2xl";
+      if (aliasText) {
+          skinStyles += " flex-col relative";
+          content = (
+             <>
+                <div className="absolute top-1 text-[8px] uppercase tracking-widest text-[#94a3b8] font-sans font-bold transition-opacity truncate w-[90%] text-center">
+                   {aliasText}
+                </div>
+                <div className="mt-2">{content}</div>
+             </>
+          );
+      }
+  } else if (tapeSkin === 'typewriter') {
+      const typewriterBase = "font-serif text-3xl font-black bg-[#fdf6e3] text-[#2c1d11] border-2 border-[#d4c5b0] dark:bg-[#1a140b] dark:text-[#d4af37] dark:border-[#4d3a1f] shadow-inner rounded-md";
+      if (isHead) {
+          skinStyles = `${typewriterBase} ring-2 ring-[#2c1d11] dark:ring-[#d4af37] scale-110 relative z-20`;
+      } else {
+          skinStyles = `${typewriterBase} opacity-85`;
+      }
+      content = cellValue === '_' ? '-' : cellValue;
+  } else if (tapeSkin === 'dots') {
+      const isBlnk = cellValue === '_';
+      const dotStyle = twMerge(
+          "rounded-full transition-all duration-300 pointer-events-none",
+          isBlnk ? "w-2.5 h-2.5 opacity-25 border-2 border-text-muted" :
+          cellValue === '0' ? "w-3.5 h-3.5 bg-primary-base shadow-sm" :
+          cellValue === '1' ? "w-5.5 h-5.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" :
+          "w-5 h-5 bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]"
+      );
+      skinStyles = twMerge(
+          "bg-bg-surface border border-border-main/70 flex items-center justify-center rounded-full transition-transform duration-300",
+          isHead ? "border-primary-base border-2 scale-110 relative z-20 shadow-[0_0_10px_rgba(255,255,255,0.15)] bg-bg-panel" : ""
+      );
+      content = <div className={dotStyle} />;
+  } else if (tapeSkin === 'binary') {
+      const binStr = cellValue === '_' ? '00000000' : cellValue.charCodeAt(0).toString(2).padStart(8, '0');
+      const baseColors = "font-mono text-[9px] bg-[#070b12] border-2 border-[#14233c] text-emerald-400 font-bold uppercase tracking-wider rounded-md";
+      if (isHead) {
+          skinStyles = `${baseColors} border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] scale-115 relative z-20 text-emerald-300`;
+      } else {
+          skinStyles = `${baseColors} opacity-75`;
+      }
+      content = (
+          <div className="flex flex-col items-center justify-center gap-0.5 leading-none pointer-events-none">
+              <span className="text-[6.5px] text-emerald-600/60 font-sans tracking-wide">BYTE</span>
+              <span className="font-mono text-[8px] tracking-tight">{binStr}</span>
+          </div>
+      );
+  } else if (tapeSkin === 'focus') {
+      const dist = Math.abs(cellIndex - headPosition);
+      if (dist === 0) {
+          skinStyles = "font-mono text-3xl font-black bg-primary-base/20 border-2 border-primary-base text-primary-base scale-125 z-40 shadow-[0_0_24px_rgba(59,130,246,0.6)] rounded-lg";
+      } else if (dist === 1) {
+          skinStyles = "font-mono text-xl font-bold bg-bg-panel border border-border-main/80 text-text-primary scale-102 z-30 opacity-85 rounded-lg";
+      } else {
+          skinStyles = "font-mono text-sm bg-bg-element/40 border border-border-main/30 text-text-faint scale-90 opacity-25 grayscale hover:opacity-50 transition-all duration-300 rounded-lg";
+      }
+  }
+
+  return { skinStyles, content };
 };
 
 interface MarkerData {
@@ -267,16 +345,21 @@ export const Tape: React.FC = () => {
   const [tapeSkin, setTapeSkin] = useState<TapeSkin>('default');
   const [scrollOffset, setScrollOffset] = useState(0);
 
-  // Auto-recenter on headPosition or isRunning change
-  useEffect(() => {
-    setScrollOffset(0);
-  }, [headPosition]);
+  const tapeTrackRef = useRef<HTMLDivElement>(null);
 
+  // Auto-recenter on isRunning change
   useEffect(() => {
     if (isRunning) {
       setScrollOffset(0);
     }
   }, [isRunning]);
+
+  // Smoothly scroll the Tape track into view whenever the head moves
+  useEffect(() => {
+    if (headPosition !== undefined && tapeTrackRef.current) {
+      tapeTrackRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [headPosition]);
 
   const [customBorderColor, setCustomBorderColor] = useState<string>(() => {
     return localStorage.getItem('tm-tape-border-color') || 'default';
@@ -341,7 +424,7 @@ export const Tape: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col relative select-none overflow-hidden border-2 border-primary-base/20 rounded-xl bg-bg-panel shadow-[0_4px_30px_rgba(0,0,0,0.3)] hover:border-primary-base/40 transition-all duration-500">
+    <div className="flex-1 flex flex-col relative select-none overflow-y-auto overflow-x-hidden border-2 border-primary-base/20 rounded-xl bg-bg-panel shadow-[0_4px_30px_rgba(0,0,0,0.3)] hover:border-primary-base/40 transition-all duration-500">
       {/* Background radial grid, color-mixed to support any active theme */}
       <div 
         className="absolute inset-0 opacity-25 pointer-events-none" 
@@ -351,9 +434,9 @@ export const Tape: React.FC = () => {
         }} 
       />
 
-      <div className="w-full flex justify-between items-center px-4 py-3 relative z-30">
-         <div className="flex items-center gap-2">
-           <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest">History Scrubber</span>
+      <div className="w-full flex shrink-0 justify-between items-center px-4 py-3 relative z-30 flex-nowrap gap-x-4">
+         <div className="flex items-center gap-2 flex-nowrap overflow-hidden shrink-0">
+           <span className="text-[9px] text-text-muted font-bold uppercase tracking-widest hidden">History Scrubber</span>
            <button onClick={undo} disabled={historyIndex <= 0 || isRunning} className="p-1 rounded bg-bg-element hover:bg-border-active disabled:opacity-50 transition-colors" title="Undo Step">
              <Undo size={12} className="text-text-primary" />
            </button>
@@ -390,7 +473,7 @@ export const Tape: React.FC = () => {
              <span>Snap to Head</span>
            </button>
          </div>
-         <div className="flex items-center gap-3">
+         <div className="flex items-center gap-3 ml-auto shrink-0 flex-nowrap">
            <div className="flex items-center gap-1 bg-bg-element rounded px-2 py-1 border border-border-main">
               <Palette size={10} className="text-text-muted" />
               <select 
@@ -402,6 +485,7 @@ export const Tape: React.FC = () => {
                 <option value="typewriter" className="bg-bg-panel">Typewriter</option>
                 <option value="dots" className="bg-bg-panel">Dots</option>
                 <option value="binary" className="bg-bg-panel">Binary</option>
+                
               </select>
            </div>
 
@@ -557,33 +641,12 @@ export const Tape: React.FC = () => {
         </div>
       )}
 
-      <AnimatePresence>
-        {(status === 'accepted' || status === 'error' || status === 'rejected') && (
-          <motion.div
-             initial={{ opacity: 0, y: -5 }}
-             animate={{ opacity: 1, y: 0 }}
-             exit={{ opacity: 0, y: -5 }}
-             className="absolute left-4 top-[74px] z-50 pointer-events-none"
-          >
-             {status === 'accepted' && (
-                <div className="bg-green-500/10 backdrop-blur-sm border border-green-500/40 text-green-600 dark:text-green-400 text-[9px] uppercase font-bold tracking-widest px-2.5 py-1 rounded shadow-md flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_#22c55e]"></div>
-                  Simulation Accepted
-                </div>
-             )}
-             {(status === 'rejected' || status === 'error') && (
-                <div className="bg-red-500/10 backdrop-blur-sm border border-red-500/40 text-red-600 dark:text-red-400 text-[9px] uppercase font-bold tracking-widest px-2.5 py-1 rounded shadow-md flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_6px_#ef4444]"></div>
-                  {status === 'rejected' ? 'Simulation Rejected' : 'Simulation Error'}
-                </div>
-             )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+
       
       {/* Tape Track */}
       <div 
-        className="w-full flex justify-center items-center flex-1 mt-6 relative z-20 cursor-all-scroll"
+        ref={tapeTrackRef}
+        className="w-full flex justify-center items-center flex-1 shrink-0 mt-6 relative z-20 cursor-all-scroll min-h-[140px]"
         onWheel={(e) => {
           if (isRunning) return;
           // Capture scroll inputs across both mouse-wheel orientations
@@ -742,42 +805,8 @@ export const Tape: React.FC = () => {
              const isHovered = hoveredCell === cell.index && !isHead && !isRunning;
              const isSelected = selectedIndices.includes(cell.index);
 
-             let skinStyles = "font-mono text-2xl";
-             let content: React.ReactNode = cell.value === '_' ? (
-               <svg style={{width: '0.8em', height: '0.8em'}} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                 <path d="M6 18v-6 M18 18v-6 M6 18h12"/>
-               </svg>
-             ) : cell.value;
-             let aliasText = symbolAliases[cell.value === '_' ? '_' : cell.value];
-             
-             if (tapeSkin === 'typewriter') {
-                 skinStyles = "font-serif text-3xl font-black bg-[#fdf6e3] text-[#2c1d11] border-[#d4c5b0] dark:bg-[#1a140b] dark:text-[#d4af37] dark:border-[#4d3a1f] shadow-inner";
-                 content = cell.value === '_' ? '-' : cell.value;
-             } else if (tapeSkin === 'dots') {
-                 skinStyles = "bg-bg-surface border-border-main";
-                 content = (
-                     <div className={clsx(
-                         "rounded-full transition-all duration-300",
-                         cell.value === '_' ? "w-2 h-2 opacity-20 border border-current" : 
-                         cell.value === '0' ? "w-3 h-3 bg-current" : "w-5 h-5 bg-current shadow-[0_0_8px_currentColor]"
-                     )} />
-                 );
-             } else if (tapeSkin === 'binary') {
-                 skinStyles = "font-mono text-[10px] bg-[#0a0f18] border-[#1c2838] text-green-400 font-bold uppercase tracking-widest";
-                 content = cell.value === '_' ? 'BLNK' : cell.value.charCodeAt(0).toString(2).padStart(8, '0').slice(-4);
-             }
-
-             if (aliasText && tapeSkin === 'default') {
-                 skinStyles += " flex-col relative";
-                 content = (
-                    <>
-                       <div className="absolute top-1 text-[8px] uppercase tracking-widest text-text-muted font-sans font-bold transition-opacity truncate w-[90%] text-center">
-                          {aliasText}
-                       </div>
-                       <div className="mt-2">{content}</div>
-                    </>
-                 );
-             }
+             const aliasText = symbolAliases[cell.value === '_' ? '_' : cell.value];
+             const { skinStyles, content } = getTapeSkinStyles(tapeSkin, cell.value, isHead, headPosition, cell.index, aliasText);
 
              const cellBorderClass = (tapeSkin === 'default')
                ? (isHead 

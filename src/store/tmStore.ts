@@ -464,10 +464,54 @@ export const useTMStore = create<TMState>()(
       },
 
       resetMachine: () => {
-        const { activeScenario } = get();
-        if (activeScenario) {
-          get().loadScenario(activeScenario);
-        }
+        set((state) => {
+          const { activeScenario, editHistory, editHistoryIndex } = state;
+          
+          let targetTape: Record<number, string> = {};
+          let targetRules = state.rules;
+          const initialState = activeScenario?.initialState || 'q0';
+
+          if (editHistory && editHistory.length > 0 && editHistoryIndex >= 0) {
+              targetTape = { ...editHistory[editHistoryIndex].tape };
+              targetRules = [...editHistory[editHistoryIndex].rules];
+          } else if (activeScenario) {
+              const tapeRecord: Record<number, string> = {};
+              for (let i = 0; i < activeScenario.initialTape.length; i++) {
+                  tapeRecord[i] = activeScenario.initialTape[i];
+              }
+              targetTape = tapeRecord;
+              targetRules = activeScenario.rules;
+          }
+
+          return {
+             tape: targetTape,
+             rules: targetRules,
+             headPosition: activeScenario?.initialHeadPosition || 0,
+             currentState: initialState,
+             status: 'idle',
+             isRunning: false,
+             isPaused: false,
+             lastRuleId: null,
+             errorMessage: null,
+             history: [{
+               tape: { ...targetTape },
+               headPosition: activeScenario?.initialHeadPosition || 0,
+               currentState: initialState,
+               lastRuleId: null,
+               stepCount: 0
+             }],
+             historyIndex: 0,
+             stepCount: 0,
+             visitedStates: new Set([initialState]),
+             statistics: { 
+               ...initialStatistics,
+               sessionStartTimeMs: performance.now(),
+               totalTimeMs: 0,
+               memoryUsage: Object.keys(targetTape).length * 8,
+               uniqueStatesVisited: 1
+             }
+          };
+        });
       },
 
       run: () => {

@@ -3,6 +3,8 @@ import { useTMStore } from "../../store/tmStore";
 import { useScenariosStore } from "../../store/scenariosStore";
 import { presetScenarios } from "../../data/scenarios";
 import { TMScenario } from "../../types/tm";
+import { AiScenarioStudio } from "./AiScenarioStudio";
+import { AnimatePresence } from "motion/react";
 import {
   BrainCircuit,
   Loader2,
@@ -17,7 +19,9 @@ import {
   Upload,
   Search,
   Save,
-  HelpCircle
+  HelpCircle,
+  CheckCircle2,
+  Sparkles
 } from "lucide-react";
 
 const parseExpectedOutcome = (desc: string) => {
@@ -201,9 +205,7 @@ export const ScenarioLibrary: React.FC<{
   const { activeScenarios, customScenarios, scenarioProgress, addActiveScenario, removeActiveScenario, clearActiveScenarios, addCustomScenario } =
     useScenariosStore();
 
-  const [prompt, setPrompt] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isAiStudioOpen, setIsAiStudioOpen] = useState(false);
 
   const [tab, setTab] = useState<"library" | "active">("active");
   const [activeCategory, setActiveCategory] = useState<string>("All");
@@ -266,7 +268,10 @@ export const ScenarioLibrary: React.FC<{
       alert("No active scenario to save.");
       return;
     }
-    const name = window.prompt("Enter name for custom scenario:", `Custom: ${activeInstanceDetails.name}`);
+    const defaultName = activeInstanceDetails.name.startsWith("Custom:") || activeInstanceDetails.name.startsWith("AI:") 
+      ? activeInstanceDetails.name 
+      : activeInstanceDetails.name;
+    const name = window.prompt("Enter name for custom scenario:", defaultName);
     if (!name) return;
 
     const currentRules = useTMStore.getState().rules;
@@ -289,7 +294,7 @@ export const ScenarioLibrary: React.FC<{
       ...activeInstanceDetails,
       id: `custom-${Date.now()}`,
       name,
-      category: "Custom",
+      category: activeInstanceDetails.category === "AI Generated" ? "AI Generated" : "Custom",
       rules: currentRules,
       initialTape: initialTapeStr,
       customPositions: currentPositions,
@@ -319,34 +324,6 @@ export const ScenarioLibrary: React.FC<{
     };
     reader.readAsText(file);
     e.target.value = "";
-  };
-
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
-    setIsGenerating(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/generate-scenario", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ description: prompt }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate");
-
-      const newScenario = data.configuration as TMScenario;
-      addActiveScenario(newScenario);
-      loadScenario(newScenario);
-      setTab("active");
-      setPrompt("");
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setIsGenerating(false);
-    }
   };
 
   const handleLoadToActive = (scenario: TMScenario) => {
@@ -564,8 +541,10 @@ export const ScenarioLibrary: React.FC<{
                   className={`flex flex-col rounded ${activeInstanceDetails?.id === sc.id ? "bg-bg-panel border border-primary-base shadow-sm" : "hover:bg-bg-element border border-transparent"} transition-colors overflow-hidden group`}
                 >
                   <div className="flex w-full items-stretch relative">
-                    <button
+                    <div
                       onClick={() => loadScenario(sc)}
+                      role="button"
+                      tabIndex={0}
                       className="flex-1 text-left p-2 cursor-pointer pr-1"
                     >
                       <div className="flex items-center gap-2">
@@ -590,37 +569,87 @@ export const ScenarioLibrary: React.FC<{
                       </div>
 
                       {activeInstanceDetails?.id === sc.id && (
-                        <div className="mt-2.5 pt-2 border-t border-border-main/40 grid grid-cols-2 gap-2 text-left">
-                          {/* Expected Block */}
-                          <div className="bg-bg-surface/60 border border-border-main/50 rounded p-1.5 flex flex-col justify-between min-h-[58px]">
-                            <div>
-                              <span className="text-[7.5px] font-bold text-text-muted uppercase tracking-wider block mb-1">
-                                Expected Outcome
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <span className={`inline-block w-1.5 h-1.5 rounded-full ${getExpectedColorInfo(sc).dotClass}`} />
-                                <span className="text-[8.5px] font-bold text-text-primary leading-none">
-                                  {getExpectedColorInfo(sc).label}
+                        <>
+                          <div className="mt-2.5 pt-2 border-t border-border-main/40 grid grid-cols-2 gap-2 text-left">
+                            {/* Expected Block */}
+                            <div className="bg-bg-surface/60 border border-border-main/50 rounded p-1.5 flex flex-col justify-between min-h-[58px]">
+                              <div>
+                                <span className="text-[7.5px] font-bold text-text-muted uppercase tracking-wider block mb-1">
+                                  Expected Outcome
                                 </span>
+                                <div className="flex items-center gap-1">
+                                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${getExpectedColorInfo(sc).dotClass}`} />
+                                  <span className="text-[8.5px] font-bold text-text-primary leading-none">
+                                    {getExpectedColorInfo(sc).label}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="text-[8px] text-text-secondary leading-normal block mt-1 line-clamp-3">
+                                {parseExpectedOutcome(sc.description).expected || "Halt in success state."}
+                              </span>
+                            </div>
+
+                            {/* Actual Block */}
+                            <div className="bg-bg-surface/60 border border-border-main/50 rounded p-1.5 flex flex-col justify-between min-h-[58px]">
+                              <div>
+                                <span className="text-[7.5px] font-bold text-text-muted uppercase tracking-wider block mb-[3px]">
+                                  Actual Result
+                                </span>
+                                {getActualResultInfo(sc.id)}
                               </div>
                             </div>
-                            <span className="text-[8px] text-text-secondary leading-normal block mt-1 line-clamp-3">
-                              {parseExpectedOutcome(sc.description).expected || "Halt in success state."}
-                            </span>
                           </div>
 
-                          {/* Actual Block */}
-                          <div className="bg-bg-surface/60 border border-border-main/50 rounded p-1.5 flex flex-col justify-between min-h-[58px]">
-                            <div>
-                              <span className="text-[7.5px] font-bold text-text-muted uppercase tracking-wider block mb-[3px]">
-                                Actual Result
-                              </span>
-                              {getActualResultInfo(sc.id)}
-                            </div>
+                          {/* SAVE WORKSPACE STATE AS PRESET */}
+                          <div className="mt-2.5 flex gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSaveAsCustom();
+                              }}
+                              className="w-full flex justify-center items-center gap-1.5 text-[9.5px] font-bold py-1.5 bg-primary-base/10 hover:bg-primary-base/20 text-primary-base border border-primary-base/20 hover:border-primary-base/40 rounded transition-all active:scale-[0.98]"
+                              title="Save current rules & tape modifications as a permanent Library preset"
+                            >
+                              <Save size={11} /> SAVE STATE TO LIBRARY AS PRESET
+                            </button>
                           </div>
-                        </div>
+
+                          {/* UPFRONT SIMULATOR VERIFICATION RESULTS */}
+                          {sc.upfrontTestResult && (
+                            <div className="mt-2.5 text-left bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 rounded-md p-2 text-[9px] font-sans antialiased transition-colors">
+                              <div className="flex items-center gap-1 text-sky-400 font-extrabold mb-1">
+                                <CheckCircle2 size={11} className="text-emerald-400" />
+                                <span className="uppercase tracking-wider font-sans">Upfront Tested & Verified</span>
+                              </div>
+                              <p className="text-text-muted leading-relaxed font-sans text-[8.5px]">
+                                Turing backend execution dry-run successfully passed on initial tape <code className="bg-[#161b22] font-mono px-1 py-0.5 rounded text-blue-400 font-normal">"{sc.initialTape}"</code> from <code className="bg-[#161b22] font-mono px-1 py-0.5 rounded text-indigo-400 font-normal">{sc.initialState}</code>.
+                              </p>
+                              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-border-main/30 font-mono text-[8px] text-text-muted">
+                                <div>
+                                  <span className="text-text-faint text-[7px] uppercase block tracking-wider mb-0.5">STATUS</span>
+                                  <span className={`font-extrabold ${sc.upfrontTestResult.status === 'accepted' ? 'text-green-500' : 'text-amber-500'}`}>
+                                    {sc.upfrontTestResult.status.toUpperCase()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-text-faint text-[7px] uppercase block tracking-wider mb-0.5">STEPS</span>
+                                  <span className="text-text-primary font-bold">
+                                    {sc.upfrontTestResult.stepsExecuted} Cycles
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-text-faint text-[7px] uppercase block tracking-wider mb-0.5">FINAL TAPE</span>
+                                  <span className="text-text-primary truncate block font-bold" title={sc.upfrontTestResult.finalTape}>
+                                    {sc.upfrontTestResult.finalTape || '_'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
-                    </button>
+                    </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -644,54 +673,31 @@ export const ScenarioLibrary: React.FC<{
         )}
       </div>
 
-      <div className="mt-auto p-3 border-t border-border-main bg-bg-panel/40 shrink-0 relative">
-        <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#3b82f6] mb-1 flex items-center justify-between">
-          <span>AI Scenario Creator</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              className="text-[#3b82f6]/70 hover:text-[#3b82f6] border border-[#3b82f6]/30 hover:bg-[#3b82f6]/10 p-0.5 rounded transition-colors group relative"
-              title="Show Examples"
-            >
-              <HelpCircle size={10} />
-              <div className="absolute right-0 bottom-full mb-1 w-48 p-2 rounded bg-bg-surface border border-border-main shadow-xl text-[10px] hidden group-hover:flex flex-col gap-1 text-left opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal z-50 normal-case tracking-normal">
-                <span className="font-bold text-text-primary mb-1 text-xs">Example Prompts:</span>
-                <span className="text-text-secondary bg-bg-element p-1 rounded italic">"A busy beaver that halts quickly"</span>
-                <span className="text-text-secondary bg-bg-element p-1 rounded italic">"Machine that multiplies a unary digit by 3"</span>
-                <span className="text-text-secondary bg-bg-element p-1 rounded italic">"Check if a binary number is divisible by 4"</span>
-              </div>
-            </button>
-            <BrainCircuit size={12} className="text-[#3b82f6] animate-pulse" />
-          </div>
+      <div className="mt-auto p-4 border-t border-border-main bg-bg-panel/40 shrink-0 relative flex flex-col gap-2">
+        <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#3b82f6] flex items-center justify-between">
+          <span className="flex items-center gap-1.5"><Sparkles size={12} /> Synthesize New Machines</span>
         </div>
-        <p className="text-[9px] text-text-muted leading-tight mb-2">
-          Synthesize a complete new sandbox scenario from scratch, including initial tape and model properties.
+        <p className="text-[10px] text-text-muted leading-relaxed hidden sm:block">
+          Use the AI Scenario Studio to describe custom Turing Machine behaviors and automatically generate the rules, tape, and layout.
         </p>
-        <textarea
-          placeholder="e.g. A binary string palindrome checker with tape elements..."
-          className="w-full bg-[#161b22] border border-border-main rounded p-2 text-[10px] h-16 outline-none focus:border-[#4d5c6e] text-text-primary placeholder:text-text-faint resize-none leading-normal transition-colors"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-        />
+
         <button
-          onClick={handleGenerate}
-          disabled={isGenerating || !prompt.trim()}
-          className="w-full bg-[#1d4ed8] hover:bg-blue-600 text-white text-[10px] font-extrabold py-1.5 mt-1.5 rounded disabled:opacity-45 disabled:pointer-events-none transition-all flex items-center justify-center gap-1 uppercase tracking-wider shadow"
+          onClick={() => setIsAiStudioOpen(true)}
+          className="w-full bg-[#1d4ed8]/10 hover:bg-[#1d4ed8]/20 text-[#3b82f6] border border-[#3b82f6]/30 text-[10px] font-extrabold py-2.5 rounded transition-all flex items-center justify-center gap-2 uppercase tracking-wider shadow"
         >
-          {isGenerating ? (
-            <>
-              <Loader2 size={11} className="animate-spin text-white" />
-              Creating Scenario...
-            </>
-          ) : (
-            "Create New Scenario"
-          )}
+          <BrainCircuit size={14} className="animate-pulse" />
+          AI Scenario Studio
         </button>
-        {error && (
-          <div className="text-red-400 text-[10px] mt-1.5 break-words font-sans bg-red-950/20 border border-red-500/10 p-1 rounded">
-            {error}
-          </div>
-        )}
       </div>
+
+      <AnimatePresence>
+        {isAiStudioOpen && (
+          <AiScenarioStudio
+            isOpen={isAiStudioOpen}
+            onClose={() => setIsAiStudioOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </aside>
   );
 };

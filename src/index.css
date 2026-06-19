@@ -184,3 +184,73 @@
   }
 }
 
+/* @media print custom rules to hide non-essential UI elements when printing the machine configuration */
+@media print {
+  /* Hide main navigation header */
+  header,
+  header * {
+    display: none !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+  }
+
+  /* Hide the left sidebar panel and help sidebar */
+  div:has([data-tour="library"]),
+  [data-tour="library"],
+  #help-sidebar-container,
+  #help-sidebar-drag-handle,
+  aside[data-tour="rules"] div:has([data-tour="stats"]), /* Hide stats panel if desired, or keep rules */
+  .tour-overlay,
+  .toast-container,
+  div:has(> .toast-container),
+  /* Toast/autosave messages container */
+  .fixed.bottom-4.right-4 {
+    display: none !important;
+  }
+
+  /* Hide all resizable panel resize handles */
+  [data-panel-resize-handle],
+  .group[data-panel-resize-handle] {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  /* Hide floating window action buttons (maximize, close, drag handles) and detach buttons */
+  button[title="Detach Panel"],
+  button[title="Minimize"],
+  button[title="Restore"],
+  button[title="Maximize"],
+  button[title="Attach to workspace"],
+  button[title="Close"],
+  .floating-window-buttons,
+  /* Hide close/maximize buttons inside FloatingWindow header style */
+  div[style*="zIndex: 100"] .flex.items-center.gap-2 {
+    display: none !important;
+  }
+
+  /* Avoid cutting off tape, rules, and diagrams in between pages */
+  [data-tour="tape"],
+  [data-tour="rules"],
+  [data-tour="diagram"],
+  .react-flow {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Set background of page to white and text to black to save ink and look polished in print */
+  body, html, #root, .bg-bg-base, .bg-bg-panel, .bg-bg-surface {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Keep layout flowing cleanly on the printed sheet */
+  .h-screen {
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
+
+

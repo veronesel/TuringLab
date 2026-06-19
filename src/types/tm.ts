@@ -22,6 +22,13 @@ export interface TMScenario {
   stateColors?: Record<string, string>;
   stateLabels?: Record<string, string>;
   category?: string;
+  upfrontTestResult?: {
+    status: 'accepted' | 'rejected' | 'halted' | 'timeout';
+    stepsExecuted: number;
+    uniqueStatesVisited: number;
+    finalTape: string;
+    haltedState: string;
+  };
 }
 
 export interface TMHistoryEntry {
