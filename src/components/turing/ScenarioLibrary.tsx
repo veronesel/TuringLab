@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useTMStore } from "../../store/tmStore";
 import { useScenariosStore } from "../../store/scenariosStore";
 import { presetScenarios } from "../../data/scenarios";
@@ -21,7 +22,9 @@ import {
   Save,
   HelpCircle,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  X,
+  Eye
 } from "lucide-react";
 
 const parseExpectedOutcome = (desc: string) => {
@@ -76,6 +79,9 @@ export const ScenarioLibrary: React.FC<{
   isCollapsed: boolean;
   onToggleCollapse: () => void;
 }> = ({ isCollapsed, onToggleCollapse }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  
   const loadScenario = useTMStore((state) => state.loadScenario);
   const clearScenario = useTMStore((state) => state.clearScenario);
   const activeInstanceDetails = useTMStore((state) => state.activeScenario);
@@ -207,11 +213,15 @@ export const ScenarioLibrary: React.FC<{
 
   const [isAiStudioOpen, setIsAiStudioOpen] = useState(false);
 
-  const [tab, setTab] = useState<"library" | "active">("active");
+  const [tab, setTab] = useState<"library" | "active" | "synthesize">("active");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Quick preview & group collapsible state hooks
+  const [previewScenario, setPreviewScenario] = useState<TMScenario | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const allLibraryScenarios = [
     ...presetScenarios,
@@ -225,6 +235,26 @@ export const ScenarioLibrary: React.FC<{
       sc.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === "All" || (sc.category || "Uncategorized") === activeCategory;
     return matchesSearch && matchesCategory;
+  });
+
+  // Group sc by category (e.g. { "Basic Arithmetic": [...], "String Manipulation": [...] })
+  const groupedPresetsByCat: Record<string, TMScenario[]> = {};
+  filteredPresets.forEach((sc) => {
+    const cat = sc.category || "Uncategorized";
+    if (!groupedPresetsByCat[cat]) {
+      groupedPresetsByCat[cat] = [];
+    }
+    groupedPresetsByCat[cat].push(sc);
+  });
+
+  const sortedGroupedCategories = Object.keys(groupedPresetsByCat).sort((a, b) => {
+    return a.localeCompare(b);
+  });
+
+  const filteredActiveScenarios = activeScenarios.filter((sc) => {
+    const matchesSearch = sc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      sc.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
   });
 
   const handleExport = () => {
@@ -335,13 +365,6 @@ export const ScenarioLibrary: React.FC<{
   if (isCollapsed) {
     return (
       <aside className="w-full border-r border-border-main bg-bg-surface flex flex-col items-center shrink-0 h-full py-4 relative z-20 overflow-hidden">
-        <button
-          onClick={onToggleCollapse}
-          className="p-1.5 hover:bg-bg-element rounded-md text-text-secondary transition-colors absolute top-3 right-1.5"
-          title="Expand Sidebar"
-        >
-          <ChevronRight size={16} />
-        </button>
         <div className="mt-8 flex flex-col gap-4 text-text-muted">
           <button
             className="p-1.5 hover:bg-bg-element hover:text-text-primary rounded-md transition-colors"
@@ -369,6 +392,19 @@ export const ScenarioLibrary: React.FC<{
               className={tab === "active" ? "text-primary-base" : ""}
             />
           </button>
+          <button
+            className="p-1.5 hover:bg-bg-element hover:text-text-primary rounded-md transition-colors animate-pulse"
+            onClick={() => {
+              setTab("synthesize");
+              onToggleCollapse();
+            }}
+            title="Synthesize New Machine"
+          >
+            <BrainCircuit
+              size={16}
+              className={tab === "synthesize" ? "text-primary-base" : ""}
+            />
+          </button>
         </div>
       </aside>
     );
@@ -384,22 +420,52 @@ export const ScenarioLibrary: React.FC<{
         <ChevronLeft size={16} />
       </button>
 
-      <div className="p-3 border-b border-border-main flex flex-col gap-3 bg-bg-panel/50 pt-4">
+      <div className="p-3 border-b border-border-main flex flex-col gap-2.5 bg-bg-panel/50 pt-4">
         <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted pr-6">
           Scenarios
         </span>
+        
+        {tab !== "synthesize" && (
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Search scenarios by name or description..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-bg-surface border border-border-main rounded pl-7 pr-6 py-1 text-[10px] outline-none focus:border-primary-base text-text-primary transition-colors placeholder:text-text-faint"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5 rounded cursor-pointer"
+                title="Clear search query"
+              >
+                <X size={11} />
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="flex bg-bg-surface border border-border-main rounded p-0.5 w-full">
           <button
             onClick={() => setTab("library")}
-            className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded transition-all ${tab === "library" ? "bg-bg-panel text-text-primary shadow-sm" : "hover:bg-bg-element text-text-secondary"}`}
+            className={`flex-1 flex justify-center items-center gap-1 px-1 py-1 text-[9px] font-bold rounded transition-all ${tab === "library" ? "bg-bg-panel text-text-primary shadow-sm" : "hover:bg-bg-element text-text-secondary"}`}
           >
-            <BookOpen size={12} /> LIBRARY
+            <BookOpen size={11} /> LIBRARY
           </button>
           <button
             onClick={() => setTab("active")}
-            className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded transition-all ${tab === "active" ? "bg-bg-panel text-text-primary shadow-sm" : "hover:bg-bg-element text-text-secondary"}`}
+            className={`flex-1 flex justify-center items-center gap-1 px-1 py-1 text-[9px] font-bold rounded transition-all ${tab === "active" ? "bg-bg-panel text-text-primary shadow-sm" : "hover:bg-bg-element text-text-secondary"}`}
           >
-            <List size={12} /> ACTIVE
+            <List size={11} /> ACTIVE
+          </button>
+          <button
+            onClick={() => setTab("synthesize")}
+            className={`flex-1 flex justify-center items-center gap-1 px-1 py-1 text-[9px] font-bold rounded transition-all ${tab === "synthesize" ? "bg-bg-panel text-text-primary shadow-sm" : "hover:bg-bg-element text-text-secondary"}`}
+            title="AI Synthesizer Studio"
+          >
+            <BrainCircuit size={11} /> SYNTHESIZE
           </button>
         </div>
       </div>
@@ -408,17 +474,7 @@ export const ScenarioLibrary: React.FC<{
         {tab === "library" && (
           <div className="flex flex-col h-full">
             <div className="p-2 border-b border-border-main shrink-0">
-              <div className="relative">
-                <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
-                <input
-                  type="text"
-                  placeholder="Search scenarios..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-bg-surface border border-border-main rounded pl-7 pr-2 py-1.5 text-[10px] outline-none focus:border-primary-base text-text-primary"
-                />
-              </div>
-              <div className="flex gap-1.5 mt-2 overflow-x-auto no-scrollbar pb-1">
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
                 {categories.map(cat => (
                   <button
                     key={cat}
@@ -430,65 +486,130 @@ export const ScenarioLibrary: React.FC<{
                 ))}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-1 space-y-0.5">
+            <div className="flex-1 overflow-y-auto p-1.5 space-y-2">
               {filteredPresets.length === 0 ? (
                 <div className="p-4 text-center text-xs text-text-muted italic">
                   No matching scenarios found.
                 </div>
               ) : (
-                filteredPresets.map((sc) => (
-                  <div
-                    key={sc.id}
-                    className="border border-transparent hover:border-border-active hover:bg-bg-element/50 rounded transition-colors overflow-hidden group"
-                    title={`Objective: ${sc.description}\n\nInitial Tape: ${sc.initialTape}`}
-                  >
-                    <button
-                      onClick={() =>
-                        setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
-                      }
-                      className="w-full text-left p-2 cursor-pointer flex justify-between items-center"
-                    >
-                      <div className="text-xs font-bold text-text-primary">
-                        {sc.name}
-                      </div>
-                      <ChevronRight
-                        size={14}
-                        className={`text-text-muted transition-transform ${selectedPreset === sc.id ? "rotate-90" : ""}`}
-                      />
-                    </button>
-                    {selectedPreset === sc.id && (
-                      <div className="px-2 pb-2 text-[10px] text-text-secondary leading-tight flex flex-col gap-3 pt-1">
-                        <p className="border-l-2 border-primary-base/30 pl-2 text-text-primary">
-                          {parseExpectedOutcome(sc.description).description}
-                        </p>
-                        
-                        {parseExpectedOutcome(sc.description).expected && (
-                          <div className="bg-bg-element/50 border border-border-main/60 rounded p-2 flex flex-col gap-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[8px] font-bold uppercase tracking-wider text-text-muted">
-                                Expected Outcome
-                              </span>
-                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold rounded-full border ${getExpectedColorInfo(sc).bgClass}`}>
-                                <span className={`w-1 h-1 rounded-full ${getExpectedColorInfo(sc).dotClass}`} />
-                                {getExpectedColorInfo(sc).label}
-                              </span>
-                            </div>
-                            <span className="text-[9px] text-text-secondary leading-normal">
-                              {parseExpectedOutcome(sc.description).expected}
-                            </span>
-                          </div>
-                        )}
+                sortedGroupedCategories.map((catName) => {
+                  const isCatCollapsed = !!collapsedCategories[catName];
+                  const scList = groupedPresetsByCat[catName];
+                  return (
+                    <div key={catName} className="flex flex-col border border-border-main/50 rounded bg-bg-panel/10 overflow-hidden">
+                      {/* Collapse Header */}
+                      <button
+                        onClick={() => setCollapsedCategories({
+                          ...collapsedCategories,
+                          [catName]: !isCatCollapsed
+                        })}
+                        className="w-full flex items-center justify-between p-2 pb-1.5 bg-bg-surface hover:bg-bg-element text-left transition-colors cursor-pointer select-none border-b border-border-main/40"
+                        title={isCatCollapsed ? `Expand ${catName}` : `Collapse ${catName}`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <ChevronDown
+                            size={12}
+                            className={`text-text-secondary shrink-0 transition-transform duration-200 ${isCatCollapsed ? "-rotate-90 text-text-muted" : "text-primary-base"}`}
+                          />
+                          <span className="text-[10px] font-extrabold uppercase tracking-wide text-text-primary truncate">
+                            {catName}
+                          </span>
+                        </div>
+                        <span className="text-[8px] bg-bg-element border border-border-main px-1.5 py-0.5 rounded-full font-bold text-text-muted shrink-0 shadow-sm leading-none">
+                          {scList.length}
+                        </span>
+                      </button>
 
-                        <button
-                          onClick={() => handleLoadToActive(sc)}
-                          className="w-full bg-bg-panel border border-border-main text-text-primary font-bold py-1.5 rounded hover:bg-bg-element hover:border-border-active hover:text-primary-base transition-colors flex items-center justify-center gap-1 shadow-sm"
-                        >
-                          <Plus size={12} /> LOAD SCENARIO
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))
+                      {/* Scenario list inside category */}
+                      {!isCatCollapsed && (
+                        <div className="p-1 space-y-1">
+                          {scList.map((sc) => (
+                            <div
+                              key={sc.id}
+                              className="border border-border-main/20 hover:border-border-active hover:bg-bg-element/40 rounded transition-colors overflow-hidden group relative"
+                              title={`Objective: ${sc.description}\n\nInitial Tape: ${sc.initialTape}`}
+                            >
+                              <div className="flex items-center w-full bg-bg-surface/30">
+                                {/* Clicking the name toggles the expansion */}
+                                <button
+                                  onClick={() =>
+                                    setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
+                                  }
+                                  className="flex-1 text-left p-2 cursor-pointer pr-1 flex justify-between items-center transition-all bg-transparent border-0"
+                                >
+                                  <div className="text-xs font-bold text-text-primary pr-2">
+                                    {sc.name}
+                                  </div>
+                                </button>
+
+                                {/* Icon Buttons panel: Eye Icon & Expansion indicator */}
+                                <div className="flex items-center gap-1.5 px-2 shrink-0">
+                                  {/* Quick Preview Button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPreviewScenario(sc);
+                                    }}
+                                    className="p-1 hover:bg-primary-base hover:text-white rounded border border-border-main text-text-secondary bg-bg-element transition-colors cursor-pointer"
+                                    title={`Quick blueprint preview of ${sc.name}`}
+                                  >
+                                    <Eye size={11} />
+                                  </button>
+
+                                  <button
+                                    onClick={() =>
+                                      setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
+                                    }
+                                    className="p-1 text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                                    title={selectedPreset === sc.id ? "Collapse Details" : "Expand Details"}
+                                  >
+                                    <ChevronRight
+                                      size={14}
+                                      className={`text-text-muted transition-transform duration-200 ${selectedPreset === sc.id ? "rotate-90" : ""}`}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Expanded Inline Detail */}
+                              {selectedPreset === sc.id && (
+                                <div className="px-2 pb-2 text-[10px] text-text-secondary leading-tight flex flex-col gap-2.5 pt-1 border-t border-border-main/20 bg-bg-panel/20">
+                                  <p className="border-l-2 border-primary-base/30 pl-2 text-text-primary">
+                                    {parseExpectedOutcome(sc.description).description}
+                                  </p>
+                                  
+                                  {parseExpectedOutcome(sc.description).expected && (
+                                    <div className="bg-bg-element/50 border border-border-main/60 rounded p-2 flex flex-col gap-1.5">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[8px] font-bold uppercase tracking-wider text-text-muted">
+                                          Expected Outcome
+                                        </span>
+                                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold rounded-full border ${getExpectedColorInfo(sc).bgClass}`}>
+                                          <span className={`w-1 h-1 rounded-full ${getExpectedColorInfo(sc).dotClass}`} />
+                                          {getExpectedColorInfo(sc).label}
+                                        </span>
+                                      </div>
+                                      <span className="text-[9px] text-text-secondary leading-normal">
+                                        {parseExpectedOutcome(sc.description).expected}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  <button
+                                    onClick={() => handleLoadToActive(sc)}
+                                    className="w-full bg-bg-panel border border-border-main text-text-primary font-bold py-1.5 rounded hover:bg-bg-element hover:border-border-active hover:text-primary-base transition-colors flex items-center justify-center gap-1 shadow-sm cursor-pointer"
+                                  >
+                                    <Plus size={12} /> LOAD SCENARIO
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -532,8 +653,12 @@ export const ScenarioLibrary: React.FC<{
                   No active scenarios. Load one from the library or generate with
                   AI.
                 </div>
+              ) : filteredActiveScenarios.length === 0 ? (
+                <div className="p-4 text-center text-xs text-text-muted italic">
+                  No matching active scenarios found for "{searchQuery}".
+                </div>
               ) : (
-                activeScenarios.map((sc) => {
+                filteredActiveScenarios.map((sc) => {
                   const status = scenarioProgress[sc.id] || 'Not Started';
                   return (
                 <div
@@ -671,33 +796,185 @@ export const ScenarioLibrary: React.FC<{
             </div>
           </div>
         )}
-      </div>
 
-      <div className="mt-auto p-4 border-t border-border-main bg-bg-panel/40 shrink-0 relative flex flex-col gap-2">
-        <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#3b82f6] flex items-center justify-between">
-          <span className="flex items-center gap-1.5"><Sparkles size={12} /> Synthesize New Machines</span>
-        </div>
-        <p className="text-[10px] text-text-muted leading-relaxed hidden sm:block">
-          Use the AI Scenario Studio to describe custom Turing Machine behaviors and automatically generate the rules, tape, and layout.
-        </p>
-
-        <button
-          onClick={() => setIsAiStudioOpen(true)}
-          className="w-full bg-[#1d4ed8]/10 hover:bg-[#1d4ed8]/20 text-[#3b82f6] border border-[#3b82f6]/30 text-[10px] font-extrabold py-2.5 rounded transition-all flex items-center justify-center gap-2 uppercase tracking-wider shadow"
-        >
-          <BrainCircuit size={14} className="animate-pulse" />
-          AI Scenario Studio
-        </button>
-      </div>
-
-      <AnimatePresence>
-        {isAiStudioOpen && (
-          <AiScenarioStudio
-            isOpen={isAiStudioOpen}
-            onClose={() => setIsAiStudioOpen(false)}
-          />
+        {tab === "synthesize" && (
+          <AiScenarioStudio inline={true} />
         )}
-      </AnimatePresence>
+      </div>
+
+      {/* Quick Preview Modal Overlay */}
+      {mounted && createPortal(
+        <AnimatePresence>
+          {previewScenario && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+              <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out] font-sans">
+                
+                {/* Header */}
+                <div className="p-4 border-b border-[#1e293b] flex items-center justify-between bg-[#1e293b]/40">
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-extrabold text-white animate-pulse">
+                      {previewScenario.name}
+                    </span>
+                    <span className="text-[9px] font-bold bg-[#3b82f6]/20 text-[#60a5fa] px-2 py-0.5 rounded border border-[#3b82f6]/30">
+                      {previewScenario.category || "Uncategorized"}
+                    </span>
+                  </div>
+                  <span className="text-[9px] text-[#94a3b8]">
+                    Scenario Blueprint & Configuration Preview
+                  </span>
+                </div>
+                <button
+                  onClick={() => setPreviewScenario(null)}
+                  className="p-1.5 hover:bg-[#1e293b] rounded-lg text-[#94a3b8] hover:text-white transition-colors cursor-pointer border-0"
+                  title="Close Preview"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Scrollable Content */}
+              <div className="p-5 overflow-y-auto flex flex-col gap-4 text-xs text-[#94a3b8] leading-relaxed no-scrollbar bg-[#0f172a]">
+                
+                {/* description */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#64748b]">
+                    Objective Description
+                  </span>
+                  <p className="border-l-2 border-[#3b82f6] pl-3 text-[#f1f5f9] font-medium text-[11px]">
+                    {parseExpectedOutcome(previewScenario.description).description}
+                  </p>
+                </div>
+
+                {/* Expected Outcome details */}
+                {parseExpectedOutcome(previewScenario.description).expected && (
+                  <div className="bg-[#1e293b]/20 border border-[#1e293b] rounded-lg p-3 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-[#64748b]">
+                        Expected Outcome
+                      </span>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[8px] font-bold rounded-full border ${getExpectedColorInfo(previewScenario).bgClass}`}>
+                        <span className={`w-1 h-1 rounded-full ${getExpectedColorInfo(previewScenario).dotClass}`} />
+                        {getExpectedColorInfo(previewScenario).label}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-[#cbd5e1] leading-normal font-sans">
+                      {parseExpectedOutcome(previewScenario.description).expected}
+                    </span>
+                  </div>
+                )}
+
+                {/* Configuration detail card split */}
+                <div className="grid grid-cols-2 gap-3 mt-1">
+                  <div className="bg-[#1e293b]/10 p-3 rounded-lg border border-[#1e293b] flex flex-col gap-1">
+                    <span className="text-[8.5px] font-bold uppercase tracking-wider text-[#64748b]">
+                      Initial Machine Setup
+                    </span>
+                    <div className="mt-1 flex flex-col gap-1.5 text-[10px]">
+                      <div>
+                        <span className="text-[#64748b]">Start State: </span>
+                        <code className="bg-[#0f172a] px-1.5 py-0.5 rounded text-[#60a5fa] font-bold font-mono border border-[#1e293b]">
+                          {previewScenario.initialState}
+                        </code>
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-[#64748b]">Accepting: </span>
+                        {previewScenario.acceptStates.length > 0 ? (
+                          previewScenario.acceptStates.map((s) => (
+                            <code key={s} className="bg-[#0f172a] px-1.5 py-0.5 rounded text-emerald-400 font-bold font-mono border border-[#1e293b]">
+                              {s}
+                            </code>
+                          ))
+                        ) : (
+                          <span className="text-text-muted font-mono font-bold text-[9px]">None</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#1e293b]/10 p-3 rounded-lg border border-[#1e293b] flex flex-col gap-1">
+                    <span className="text-[8.5px] font-bold uppercase tracking-wider text-[#64748b]">
+                      Initial Tape Input
+                    </span>
+                    <div className="mt-1 flex flex-col gap-1">
+                      <div className="font-mono text-center bg-[#090d16] p-1.5 rounded border border-[#1e293b]/60 font-bold text-[#60a5fa] text-[10.5px] overflow-x-auto whitespace-nowrap scrollbar-thin">
+                        {previewScenario.initialTape || "EMPTY TAPE (_)"}
+                      </div>
+                      <span className="text-[7.5px] text-[#64748b] uppercase text-center mt-0.5 font-bold">
+                        Head Start Position: index {previewScenario.initialHeadPosition || 0}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transition Rules List */}
+                <div className="flex flex-col gap-1.5 mt-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#64748b]">
+                    Rules Matrix ({previewScenario.rules?.length || 0} transition{previewScenario.rules?.length !== 1 ? "s" : ""})
+                  </span>
+                  {previewScenario.rules && previewScenario.rules.length > 0 ? (
+                    <div className="border border-[#1e293b] rounded-lg overflow-hidden bg-[#0a0f1d] max-h-[160px] overflow-y-auto no-scrollbar shadow-inner">
+                      <table className="w-full border-collapse font-sans text-[10px]">
+                        <thead>
+                          <tr className="bg-[#111827] border-b border-[#1e293b] text-[#64748b] font-bold text-[8px] uppercase tracking-wider text-left">
+                            <th className="p-2 pl-3">Current State</th>
+                            <th className="p-2">Read</th>
+                            <th className="p-2 text-center text-[#475569]">➔</th>
+                            <th className="p-2">Next State</th>
+                            <th className="p-2">Write</th>
+                            <th className="p-2 pr-3">Move</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#1e293b]/40 font-mono">
+                          {previewScenario.rules.map((rule, idx) => (
+                            <tr key={rule.id || idx} className="hover:bg-[#1e293b]/30 transition-colors">
+                              <td className="p-2 pl-3 text-white font-bold">{rule.currentState}</td>
+                              <td className="p-2 text-[#60a5fa] font-bold">{rule.readSymbol === " " ? "_" : rule.readSymbol}</td>
+                              <td className="p-2 text-center text-[#475569] font-sans">➔</td>
+                              <td className="p-2 text-emerald-400 font-bold">{rule.nextState}</td>
+                              <td className="p-2 text-purple-400 font-bold">{rule.writeSymbol === " " ? "_" : rule.writeSymbol}</td>
+                              <td className="p-2 pr-3 font-sans font-bold">
+                                {rule.moveDirection === "R" ? "⏩ Right" : rule.moveDirection === "L" ? "⏪ Left" : "⏺ Stay"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="border border-[#1e293b]/50 rounded-lg p-3 bg-[#0a0f1d]/55 text-center text-[#475569] font-sans uppercase text-[8px] tracking-widest font-extrabold">
+                      Rules Studio Custom Scripted Setup
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer action buttons */}
+              <div className="p-4 bg-[#0a0f1d] border-t border-[#1e293b] flex items-center justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPreviewScenario(null)}
+                  className="px-4 py-2 bg-transparent hover:bg-[#1e293b] border border-[#1e293b] text-[#94a3b8] hover:text-white rounded font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer border-0"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleLoadToActive(previewScenario);
+                    setPreviewScenario(null);
+                  }}
+                  className="px-4 py-2 bg-[#1d4ed8] hover:bg-blue-600 text-white rounded font-bold text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5 shadow cursor-pointer border-0"
+                >
+                  <Plus size={11} /> Load Workspace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        </AnimatePresence>,
+        document.body
+      )}
     </aside>
   );
 };

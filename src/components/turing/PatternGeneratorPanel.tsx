@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Wand2 } from 'lucide-react';
 import { useTMStore } from '../../store/tmStore';
@@ -9,6 +10,9 @@ interface Props {
 }
 
 export const PatternGeneratorPanel: React.FC<Props> = ({ isOpen, onClose }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  
   const injectTapePattern = useTMStore(state => state.injectTapePattern);
   const [customPattern, setCustomPattern] = useState("");
   const [selectedGenerator, setSelectedGenerator] = useState<'custom' | 'fibonacci' | 'primes' | 'powersOfTwo'>('custom');
@@ -61,7 +65,7 @@ export const PatternGeneratorPanel: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {isOpen && mounted && createPortal(
         <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -138,7 +142,8 @@ export const PatternGeneratorPanel: React.FC<Props> = ({ isOpen, onClose }) => {
               </button>
             </div>
           </motion.div>
-        </div>
+        </div>,
+        document.body
       )}
     </AnimatePresence>
   );

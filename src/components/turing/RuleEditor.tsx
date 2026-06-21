@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { TMRule, Direction } from '../../types/tm';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, AlertCircle, RotateCw, FileText, Table, Search, X, GripVertical, Palette } from 'lucide-react';
+import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, AlertCircle, RotateCw, FileText, Table, Search, X, GripVertical, Palette, ChevronDown, Zap, Eye, EyeOff, Check } from 'lucide-react';
 import { AutocompleteInput } from './AutocompleteInput';
 import { playSubtleClick } from '../../utils/audio';
 
@@ -69,6 +69,28 @@ const textToRules = (text: string): { rulesList: TMRule[], errors: string[] } =>
   return { rulesList: parsedRules, errors: errorsList };
 };
 
+const QUICK_TEMPLATES = [
+  {
+    name: 'Move Right Loop',
+    rules: [{ id: '', currentState: 'q0', readSymbol: '_', writeSymbol: '_', moveDirection: 'R' as Direction, nextState: 'q0' }]
+  },
+  {
+    name: 'Move Left Loop',
+    rules: [{ id: '', currentState: 'q0', readSymbol: '_', writeSymbol: '_', moveDirection: 'L' as Direction, nextState: 'q0' }]
+  },
+  {
+    name: 'Binary Incrementer',
+    rules: [
+      { id: '', currentState: 'q0', readSymbol: '0', writeSymbol: '0', moveDirection: 'R' as Direction, nextState: 'q0' },
+      { id: '', currentState: 'q0', readSymbol: '1', writeSymbol: '1', moveDirection: 'R' as Direction, nextState: 'q0' },
+      { id: '', currentState: 'q0', readSymbol: '_', writeSymbol: '_', moveDirection: 'L' as Direction, nextState: 'q1' },
+      { id: '', currentState: 'q1', readSymbol: '1', writeSymbol: '0', moveDirection: 'L' as Direction, nextState: 'q1' },
+      { id: '', currentState: 'q1', readSymbol: '0', writeSymbol: '1', moveDirection: 'L' as Direction, nextState: 'halt' },
+      { id: '', currentState: 'q1', readSymbol: '_', writeSymbol: '1', moveDirection: 'L' as Direction, nextState: 'halt' }
+    ]
+  }
+];
+
 export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const rules = useTMStore(state => state.rules);
   const setRules = useTMStore(state => state.setRules);
@@ -81,6 +103,8 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const tape = useTMStore(state => state.tape);
   const executionSpeed = useTMStore(state => state.executionSpeed);
   const updateStateColor = useTMStore(state => state.updateStateColor);
+  const setHighlightedState = useTMStore(state => state.setHighlightedState);
+  const highlightedState = useTMStore(state => state.highlightedState);
 
   const [localRules, setLocalRules] = useState<TMRule[]>(rules);
   const [isBulkMode, setIsBulkMode] = useState<boolean>(false);
@@ -95,6 +119,8 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [showStateColorsManager, setShowStateColorsManager] = useState<boolean>(false);
   const [selectedStateForColor, setSelectedStateForColor] = useState<string | null>(null);
+  const [showQuickAdd, setShowQuickAdd] = useState<boolean>(false);
+  const [selectedRules, setSelectedRules] = useState<Set<string>>(new Set());
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const symbolAliases = useTMStore(state => state.symbolAliases);
@@ -193,7 +219,9 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
     const reachedSet = new Set<string>();
     reachedSet.add(startState);
 
-    localRules.forEach(r => {
+    const activeRulesForAnalysis = localRules.filter(r => r.enabled !== false);
+
+    activeRulesForAnalysis.forEach(r => {
       const cur = r.currentState.trim();
       const nxt = r.nextState.trim();
       if (cur) allStatesSet.add(cur);
@@ -211,7 +239,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
 
     // 3. Scan for non-deterministic conflicts (same current state and read symbol but different outputs)
     const keyMap = new Map<string, string[]>();
-    localRules.forEach(r => {
+    activeRulesForAnalysis.forEach(r => {
       const cur = r.currentState.trim();
       const sym = (r.readSymbol.trim() || '_');
       const key = `${cur}|${sym}`;
@@ -241,7 +269,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
     const loopMsgs: Record<string, string> = {};
 
     const sEdges = new Map<string, { to: string, ruleId: string }[]>();
-    localRules.forEach(r => {
+    activeRulesForAnalysis.forEach(r => {
       const dir = (r.moveDirection || 'S').trim().toUpperCase();
       if (dir === 'S') {
         const from = `${r.currentState.trim()}|${r.readSymbol.trim() || '_'}`;
@@ -451,6 +479,46 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
     }
   };
 
+  const toggleSelectAll = () => {
+    if (selectedRules.size === filteredRules.length && filteredRules.length > 0) {
+      setSelectedRules(new Set());
+    } else {
+      setSelectedRules(new Set(filteredRules.map(r => r.id)));
+    }
+  };
+
+  const toggleSelectRule = (id: string) => {
+    const newSelected = new Set(selectedRules);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedRules(newSelected);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedRules.size === 0) return;
+    const newRules = localRules.filter(r => !selectedRules.has(r.id));
+    setLocalRules(newRules);
+    setRules(newRules);
+    setSelectedRules(new Set());
+    playSubtleClick();
+  };
+
+  const handleBulkToggleEnable = (enable: boolean) => {
+    if (selectedRules.size === 0) return;
+    const newRules = localRules.map(r => {
+      if (selectedRules.has(r.id)) {
+        return { ...r, enabled: enable };
+      }
+      return r;
+    });
+    setLocalRules(newRules);
+    setRules(newRules);
+    playSubtleClick();
+  };
+
   const removeRule = (id: string) => {
     setLocalRules(prev => prev.filter(r => r.id !== id));
   };
@@ -564,13 +632,49 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
             <Wand2 size={10} /> Format
           </button>
           {!isBulkMode && (
-            <button 
-              onClick={addRule} 
-              disabled={isRunning} 
-              className="px-2 py-0.5 bg-green-900/30 text-green-500 text-[9px] border border-green-500/30 rounded hover:bg-green-900/50 disabled:opacity-50 transition-colors"
-            >
-              + Add Rule
-            </button>
+            <div className="flex gap-1 items-center">
+              <button 
+                onClick={addRule} 
+                disabled={isRunning} 
+                className="px-2 py-0.5 bg-green-900/30 text-green-500 text-[9px] border border-green-500/30 rounded hover:bg-green-900/50 disabled:opacity-50 transition-colors"
+              >
+                + Add Rule
+              </button>
+              <div className="relative">
+                <button 
+                  type="button"
+                  onClick={() => setShowQuickAdd(!showQuickAdd)}
+                  disabled={isRunning}
+                  className="px-2 py-0.5 bg-green-900/10 text-green-500 text-[9px] border border-green-500/20 rounded hover:bg-green-900/30 disabled:opacity-50 transition-colors flex items-center gap-1 font-bold"
+                  title="Insert Rule Templates"
+                >
+                  <Zap size={10} /> Quick Add <ChevronDown size={8} />
+                </button>
+                {showQuickAdd && (
+                  <>
+                    <div className="fixed inset-0 z-[90]" onClick={() => setShowQuickAdd(false)} />
+                    <div className="absolute top-full left-0 mt-1 w-40 bg-bg-panel border border-border-main rounded shadow-xl z-[100] py-1">
+                      {QUICK_TEMPLATES.map((tmpl, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 text-[10px] text-text-primary hover:bg-bg-element transition-colors"
+                          onClick={() => {
+                            const newRules = tmpl.rules.map(r => ({ ...r, id: uuidv4() }));
+                            const updatedRules = [...localRules, ...newRules];
+                            setLocalRules(updatedRules);
+                            setRules(updatedRules);
+                            setShowQuickAdd(false);
+                          }}
+                        >
+                          {tmpl.name}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           )}
           <button 
             type="button"
@@ -905,6 +1009,19 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
             <table className="w-full table-fixed min-w-[300px]">
               <thead className="text-text-muted border-b border-border-main text-left sticky top-0 bg-bg-surface z-10">
                 <tr>
+                  <th className="pb-1 font-normal w-6 text-center align-middle">
+                    <div className="relative inline-flex items-center justify-center w-[11px] h-[11px] mt-1" title="Select all rules for bulk actions">
+                      <input 
+                        type="checkbox" 
+                        className="peer absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        checked={selectedRules.size === filteredRules.length && filteredRules.length > 0}
+                        onChange={toggleSelectAll}
+                      />
+                      <div className="w-full h-full bg-gray-500 rounded-sm border border-gray-500 peer-checked:bg-red-500 peer-checked:border-red-500 flex items-center justify-center transition-colors">
+                        <svg width="8" height="8" viewBox="0 0 10 10" fill="none" className="opacity-0 peer-checked:opacity-100 transition-opacity"><path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </div>
+                  </th>
                   <th className="pb-1 font-normal w-6"></th>
                   <th className="pb-1 font-normal w-6 text-center text-text-faint">#</th>
                   <th className="pb-1 font-normal w-1/5 pl-2">ST</th>
@@ -931,6 +1048,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                   const isUnreachable = unreachableStates.has(curStateTrimmed) && curStateTrimmed !== '';
                   const isLoop = infiniteLoops.has(rule.id);
                   const isHighlighted = highlightedRuleId === rule.id;
+                  const isHighlightedByState = highlightedState && (rule.currentState.trim() === highlightedState || rule.nextState.trim() === highlightedState);
                   
                   const getStateClass = (s: string) => {
                     const isInitial = s === activeScenario?.initialState || s === 'q0';
@@ -977,16 +1095,32 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                       onDragStart={(e) => handleDragStart(e, index)}
                       onDragOver={(e) => handleDragOver(e, index)}
                       onDragEnd={handleDragEnd}
+                      title={isHighlightedByState ? `Highlighted because it involves state: "${highlightedState}"` : undefined}
                       className={`transition-all duration-300 relative ${
                         draggedIndex === index
                           ? 'opacity-40 bg-[#161B22]/30 border-l-2 border-dashed border-primary-base'
-                          : isHighlighted
-                            ? 'bg-amber-500/25 ring-1 ring-amber-500/60 border-l-2 border-amber-500 shadow-md font-semibold scale-[1.01] z-10'
-                            : isExecutingRow 
-                              ? 'animate-fade-in-highlight border-l-4 border-primary-base shadow-lg shadow-primary-base/35 font-extrabold scale-[1.015] z-10 duration-150 ring-1 ring-primary-base/40' 
-                              : (isLastRule ? 'bg-primary-base/5 shadow-sm' : 'hover:bg-bg-panel/40')
+                          : isConflicting
+                            ? 'bg-red-500/10 ring-1 ring-red-500/30 border-l-2 border-red-500 z-10'
+                            : (isHighlighted || isHighlightedByState)
+                              ? 'bg-amber-500/25 ring-1 ring-amber-500/60 border-l-2 border-amber-500 shadow-md font-semibold scale-[1.01] z-10'
+                              : isExecutingRow 
+                                ? 'animate-fade-in-highlight border-l-4 border-primary-base shadow-lg shadow-primary-base/35 font-extrabold scale-[1.015] z-10 duration-150 ring-1 ring-primary-base/40' 
+                                : (isLastRule ? 'bg-primary-base/5 shadow-sm' : 'hover:bg-bg-panel/40')
                       }`}
                     >
+                      <td className="py-1.5 text-center leading-none align-middle">
+                        <div className="relative inline-flex items-center justify-center w-[11px] h-[11px] mt-0.5" title="Select rule for bulk actions">
+                          <input 
+                            type="checkbox" 
+                            className="peer absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            checked={selectedRules.has(rule.id)}
+                            onChange={() => toggleSelectRule(rule.id)}
+                          />
+                          <div className="w-full h-full bg-gray-500 rounded-sm border border-gray-500 peer-checked:bg-red-500 peer-checked:border-red-500 flex items-center justify-center transition-colors">
+                            <svg width="8" height="8" viewBox="0 0 10 10" fill="none" className="opacity-0 peer-checked:opacity-100 transition-opacity"><path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </div>
+                        </div>
+                      </td>
                       <td className="py-1.5 text-center text-text-faint select-none">
                         {!isRunning && !searchQuery ? (
                           <div 
@@ -1005,10 +1139,9 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                       </td>
                       <td className="py-1.5 text-center text-text-faint border-r border-[#161B22]/50 relative">
                         {isExecutingRow && (
-                          <>
-                            <span className="absolute left-1 top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-primary-base rounded-full animate-ping opacity-60" />
-                            <span className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-primary-base rounded-full shadow-[0_0_8px_var(--color-primary-base)]" />
-                          </>
+                          <div className="absolute left-0.5 top-1/2 -translate-y-1/2 text-primary-base flex items-center justify-center animate-pulse pointer-events-none" title="Currently executing">
+                            <Zap size={11} className="drop-shadow-[0_0_8px_currentColor]" fill="currentColor" />
+                          </div>
                         )}
                         {isConflicting ? (
                           <span className="absolute right-1 top-1/2 -translate-y-1/2 cursor-help" title={conflictMessages[rule.id]}>
@@ -1037,12 +1170,17 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                         ) : null}
                         <span className={isExecutingRow ? 'text-primary-base font-extrabold pl-2.5' : ''}>{index + 1}</span>
                       </td>
-                      <td className="py-1.5 pl-2 pr-1">
+                      <td className="py-1.5 pl-2 pr-1 opacity-100 transition-opacity" style={{ opacity: rule.enabled === false ? 0.4 : 1 }}>
                         <AutocompleteInput 
                           value={rule.currentState} 
                           onChange={val => updateRule(rule.id, 'currentState', val)}
                           disabled={isRunning}
                           field="currentState"
+                          onClick={() => setHighlightedState(rule.currentState)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setHighlightedState(highlightedState === rule.currentState ? null : rule.currentState);
+                          }}
                           title={isConflicting ? conflictMessages[rule.id] : isUnreachable ? `Unreachable State Warning: No transitions lead to state "${curStateTrimmed}". This code block cannot execute.` : undefined}
                           className={`w-full bg-transparent border focus:outline-none rounded px-2 py-0.5 text-[11px] font-mono leading-normal transition-all duration-150 ${
                             isConflicting 
@@ -1057,7 +1195,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           stateColors={activeScenario?.stateColors}
                         />
                       </td>
-                      <td className="py-1.5 px-1">
+                      <td className="py-1.5 px-1 opacity-100 transition-opacity" style={{ opacity: rule.enabled === false ? 0.4 : 1 }}>
                         <AutocompleteInput 
                           value={rule.readSymbol} 
                           onChange={val => updateRule(rule.id, 'readSymbol', val)}
@@ -1074,7 +1212,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           symbolAliases={symbolAliases}
                         />
                       </td>
-                      <td className="py-1.5 px-1">
+                      <td className="py-1.5 px-1 opacity-100 transition-opacity" style={{ opacity: rule.enabled === false ? 0.4 : 1 }}>
                         <AutocompleteInput 
                           value={rule.writeSymbol} 
                           onChange={val => updateRule(rule.id, 'writeSymbol', val)}
@@ -1086,7 +1224,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           symbolAliases={symbolAliases}
                         />
                       </td>
-                      <td className="py-1.5 px-1">
+                      <td className="py-1.5 px-1 opacity-100 transition-opacity" style={{ opacity: rule.enabled === false ? 0.4 : 1 }}>
                         <select 
                           value={rule.moveDirection}
                           onChange={e => updateRule(rule.id, 'moveDirection', e.target.value as Direction)}
@@ -1098,10 +1236,15 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                           <option className="bg-[#0f141c] text-slate-400" value="S">-</option>
                         </select>
                       </td>
-                      <td className="py-1.5 pl-1 pr-2">
+                      <td className="py-1.5 pl-1 pr-2 opacity-100 transition-opacity" style={{ opacity: rule.enabled === false ? 0.4 : 1 }}>
                         <AutocompleteInput 
                           value={rule.nextState} 
                           onChange={val => updateRule(rule.id, 'nextState', val)}
+                          onClick={() => setHighlightedState(rule.nextState)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setHighlightedState(highlightedState === rule.nextState ? null : rule.nextState);
+                          }}
                           disabled={isRunning}
                           field="nextState"
                           className={`w-full bg-transparent border border-transparent focus:outline-none rounded px-2 py-0.5 text-[11px] font-mono leading-normal transition-all duration-150 ${getStateClass(rule.nextState)}`}
@@ -1123,6 +1266,41 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
             </table>
           </div>
         </>
+      )}
+      {selectedRules.size > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#0d1117] shadow-[0_4px_24px_rgba(0,0,0,0.5)] border border-border-main rounded-full py-2 px-5 flex items-center gap-4 z-50 animate-fade-in text-sm">
+          <div className="font-medium text-text-primary">
+            {selectedRules.size} selected
+          </div>
+          <div className="w-[1px] h-4 bg-border-main" />
+          <button 
+            onClick={() => handleBulkToggleEnable(true)}
+            className="flex items-center gap-1.5 text-text-secondary hover:text-emerald-400 transition-colors"
+          >
+            <Eye size={14} /> Enable
+          </button>
+          <button 
+            onClick={() => handleBulkToggleEnable(false)}
+            className="flex items-center gap-1.5 text-text-secondary hover:text-amber-400 transition-colors"
+          >
+            <EyeOff size={14} /> Disable
+          </button>
+          <div className="w-[1px] h-4 bg-border-main" />
+          <button 
+            onClick={handleBulkDelete}
+            className="flex items-center gap-1.5 text-text-secondary hover:text-red-400 transition-colors"
+          >
+            <Trash2 size={14} /> Delete
+          </button>
+          <div className="w-[1px] h-4 bg-border-main" />
+          <button 
+            onClick={() => setSelectedRules(new Set())}
+            className="flex items-center text-text-secondary hover:text-text-primary transition-colors"
+            title="Clear selection"
+          >
+            <X size={14} />
+          </button>
+        </div>
       )}
     </div>
   );

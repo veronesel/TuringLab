@@ -19,7 +19,7 @@ import { SettingsModal } from './components/turing/SettingsModal';
 import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
 import { FloatingWindow } from './components/turing/FloatingWindow';
 import { RejectionExplanationModal } from './components/turing/RejectionExplanationModal';
-import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus, Volume2, VolumeX, BookOpen } from 'lucide-react';
+import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus, Volume2, VolumeX, BookOpen, ChevronRight } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
 import { HelpSidebar } from './components/turing/HelpSidebar';
 import { Breadcrumb } from './components/ui/Breadcrumb';
@@ -27,18 +27,37 @@ import { InstantTooltip } from './components/ui/InstantTooltip';
 import { useThemeStore, DARK_SCHEMAS, LIGHT_SCHEMAS } from './store/themeStore';
 import { motion, AnimatePresence } from 'motion/react';
 
-const renderHandle = (direction: 'horizontal' | 'vertical') => (
+const renderHandle = (
+  direction: 'horizontal' | 'vertical', 
+  options?: {
+    onDoubleClick?: () => void;
+    collapsedIcon?: React.ReactNode;
+    isCollapsed?: boolean;
+    onExpandClick?: () => void;
+  }
+) => (
   <PanelResizeHandle
     className={`group flex items-center justify-center bg-transparent z-40 shrink-0 transition-colors cursor-${direction === 'horizontal' ? 'col' : 'row'}-resize ${direction === 'horizontal' ? 'w-2 relative' : 'h-2 relative'}`}
+    onDoubleClick={options?.onDoubleClick}
   >
     <div className={`
       flex items-center justify-center bg-transparent group-hover:bg-primary-base/20 group-active:bg-primary-base/30
       transition-colors rounded-[2px]
       ${direction === 'horizontal' ? 'w-2 h-12' : 'h-2 w-12'}
     `}>
-       {direction === 'horizontal' ? <GripVertical size={12} className="text-border-active group-hover:text-primary-base opacity-50" /> : <GripHorizontal size={12} className="text-border-active group-hover:text-primary-base opacity-50" />}
+       {direction === 'horizontal' ? <GripVertical size={12} className="text-border-active group-hover:text-primary-base opacity-50 pointer-events-none" /> : <GripHorizontal size={12} className="text-border-active group-hover:text-primary-base opacity-50 pointer-events-none" />}
     </div>
     <div className={`absolute bg-border-main z-[-1] pointer-events-none transition-colors group-hover:bg-primary-base/50 ${direction === 'horizontal' ? 'w-[1px] h-full' : 'h-[1px] w-full'}`} />
+    
+    {options?.isCollapsed && options?.collapsedIcon && (
+      <button 
+        onClick={(e) => { e.stopPropagation(); options?.onExpandClick?.(); }} 
+        className={`absolute ${direction === 'horizontal' ? 'right-[-14px] top-1/2 -translate-y-1/2 rounded-r border-l-0' : 'bottom-[-14px] left-1/2 -translate-x-1/2 rounded-b border-t-0'} bg-bg-panel border border-border-main cursor-pointer p-0.5 hover:text-primary-base z-[100] text-text-muted transition-colors shadow-sm`}
+        title="Expand"
+      >
+        {options.collapsedIcon}
+      </button>
+    )}
   </PanelResizeHandle>
 );
 
@@ -136,9 +155,9 @@ export default function App() {
       centerV: [35, 65]
     },
     diagram: {
-      h: [15, 85],
-      centerH: [75, 25],
-      centerV: [20, 80]
+      h: [4, 96],
+      centerH: [100, 0],
+      centerV: [15, 85]
     },
     rules: {
       h: [15, 85],
@@ -146,9 +165,9 @@ export default function App() {
       centerV: [28, 72]
     },
     tape: {
-      h: [16, 84],
-      centerH: [72, 28],
-      centerV: [55, 45]
+      h: [4, 96],
+      centerH: [82, 18],
+      centerV: [60, 40]
     }
   };
 
@@ -241,6 +260,22 @@ export default function App() {
     localStorage.removeItem(`react-resizable-panels:turing-layout-${preset}-center-h`);
     localStorage.removeItem(`react-resizable-panels:turing-layout-${preset}-center-v`);
     setLayoutResetKey(prev => prev + 1);
+
+    // Dynamic enhancements based on focus mode
+    if (preset === 'rules') {
+      setActiveSidebarTab('rules');
+      setIsSidebarCollapsed(false); // Classic rules layout keeps left sidebar visible (15%)
+    } else if (preset === 'tape') {
+      setActiveSidebarTab('debugger');
+      setIsSidebarCollapsed(true); // Collapsed left sidebar to focus on tape performance
+    } else if (preset === 'diagram') {
+      setIsSidebarCollapsed(true); // Collapsed left sidebar to focus on state diagram
+    } else if (preset === 'library') {
+      setIsSidebarCollapsed(false); // Classic library layout keeps left sidebar expanded and wide (32%)
+    } else if (preset === 'default') {
+      setIsSidebarCollapsed(false); // Classic default workspace keeps left sidebar visible (18%)
+      setActiveSidebarTab('rules');
+    }
   };
 
   const { themeMode, colorSchema, toggleThemeMode, setColorSchema, soundEnabled, setSoundEnabled } = useThemeStore();
@@ -868,7 +903,18 @@ export default function App() {
           </div>
         </Panel>
 
-        {renderHandle('horizontal')}
+        {renderHandle('horizontal', {
+          isCollapsed: isSidebarCollapsed,
+          collapsedIcon: <ChevronRight size={14} />,
+          onExpandClick: () => sidebarPanelRef.current?.expand(),
+          onDoubleClick: () => {
+            const panel = sidebarPanelRef.current;
+            if (panel) {
+              if (panel.isCollapsed()) panel.expand();
+              else panel.collapse();
+            }
+          }
+        })}
 
         {/* Center & Right Sidebar */}
         <Panel defaultSize={80} minSize={20} className="min-h-0 min-w-0 flex flex-col">

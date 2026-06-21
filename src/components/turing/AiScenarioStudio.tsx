@@ -10,11 +10,12 @@ import {
 } from 'lucide-react';
 
 interface AiScenarioStudioProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  inline?: boolean;
 }
 
-export const AiScenarioStudio: React.FC<AiScenarioStudioProps> = ({ isOpen, onClose }) => {
+export const AiScenarioStudio: React.FC<AiScenarioStudioProps> = ({ isOpen = false, onClose, inline = false }) => {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
@@ -135,13 +136,163 @@ export const AiScenarioStudio: React.FC<AiScenarioStudioProps> = ({ isOpen, onCl
     setPrompt("");
     setPreviewState({ isOpen: false, base: null, proposed: null, formatted: null });
     setIsGenerating(false);
-    onClose();
+    if (onClose) onClose();
   };
 
   const handleCancelPreview = () => {
     setPreviewState({ isOpen: false, base: null, proposed: null, formatted: null });
     setIsGenerating(false);
   };
+
+  if (inline) {
+    return (
+      <div className="flex flex-col h-full bg-[#0d1117]/10">
+        <div className="p-3 border-b border-border-[#21262d]/50 bg-[#161b22]/30 flex flex-col gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="p-1 rounded bg-purple-500/10 text-purple-450">
+              <BrainCircuit size={13} className="text-purple-400" />
+            </span>
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wide">
+              AI Synthesizer
+            </span>
+          </div>
+          <p className="text-[10px] text-text-muted leading-snug">
+            Describe custom Turing Machine behaviors to automatically synthesize states, custom rules, initial tape, and full state-diagram positions.
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className="text-[10px] font-bold text-text-secondary tracking-wide uppercase flex items-center gap-1">
+                  Scenario Prompt
+                  <div className="group relative inline-flex">
+                    <HelpCircle size={11} className="text-text-muted cursor-help" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 p-2 rounded bg-bg-surface border border-border-main shadow-xl text-[9px] hidden group-hover:block text-left whitespace-normal z-[100] font-normal leading-normal text-text-primary pointer-events-none">
+                      Describe what your machine should do, what the tape contains, and output states.
+                    </div>
+                  </div>
+                </label>
+                
+                <button
+                  type="button"
+                  onClick={handleGenerateIdea}
+                  disabled={isGeneratingIdea}
+                  className="flex items-center gap-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 px-2 py-0.5 rounded text-[9px] font-bold text-purple-400 cursor-pointer transition-colors"
+                >
+                  {isGeneratingIdea ? (
+                    <>
+                      <Loader2 size={9} className="animate-spin text-purple-400" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 size={9} className="text-purple-400" />
+                      Try New Idea
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {activeInstanceDetails && (
+                <label className="flex items-center gap-1.5 cursor-pointer bg-blue-500/5 hover:bg-blue-500/10 px-2 py-1 rounded transition-colors border border-blue-500/15 w-fit">
+                  <input 
+                    type="checkbox" 
+                    checked={modifyActive} 
+                    onChange={(e) => setModifyActive(e.target.checked)}
+                    className="accent-blue-500 cursor-pointer w-3 h-3"
+                  />
+                  <span className="text-[9px] font-bold text-blue-400 font-sans select-none tracking-wide uppercase">
+                    Modify active machine base
+                  </span>
+                </label>
+              )}
+            </div>
+
+            <textarea
+              placeholder="e.g. Check if a string on the tape is a binary palindrome..."
+              className="w-full bg-[#161b22] border border-[#30363d] focus:border-[#58a6ff] rounded p-2.5 text-[11px] h-28 outline-none text-text-primary placeholder:text-text-faint resize-none leading-relaxed transition-colors shadow-inner"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+            />
+            
+            <div className="flex items-center gap-1 text-[9px] text-text-faint mt-0.5 leading-tight">
+              <Sparkles size={10} className="text-amber-400/50 shrink-0" />
+              <span>Pro Tip: Mention starting tape strings (e.g. '101') for custom starting conditions.</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 py-1">
+             <div className="flex-1 border-t border-border-main/50" />
+             <span className="text-[8px] text-text-muted font-bold tracking-wider uppercase">Quick Sandbox Examples</span>
+             <div className="flex-1 border-t border-border-main/50" />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+             {[
+               { title: "Binary Shift", desc: "Shift a binary string one cell right" },
+               { title: "Palindrome", desc: "Check if a string is a palindrome" },
+               { title: "Unary Multiplier", desc: "Multiply a unary number by 2" }
+             ].map((idea, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setPrompt(idea.desc)}
+                  className="text-left text-[10px] p-2 rounded border border-[#21262d] hover:border-[#4d5c6e] bg-[#161b22] text-text-secondary hover:text-text-primary transition-all flex flex-col gap-0.5 group shadow-sm cursor-pointer"
+                >
+                  <span className="font-bold text-blue-400 group-hover:text-blue-300">{idea.title}</span>
+                  <span className="text-[9px] text-text-faint">{idea.desc}</span>
+                </button>
+             ))}
+          </div>
+
+          {error && (
+            <div className="text-red-400 text-[10px] break-words font-sans bg-red-950/20 border border-red-500/15 p-2 rounded flex items-start gap-1.5">
+              <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
+
+          <div className="mt-2 text-center">
+            <button
+               onClick={handleGenerate}
+               disabled={isGenerating || !prompt.trim()}
+               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] py-2.5 rounded disabled:opacity-45 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 shadow uppercase tracking-wider cursor-pointer"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 size={11} className="animate-spin text-white/70" />
+                  {modifyActive ? "Modifying..." : "Synthesizing..."}
+                </>
+              ) : modifyActive ? (
+                <>
+                  <Sparkles size={11} />
+                  Modify Active Machine
+                </>
+              ) : (
+                <>
+                  <Sparkles size={11} />
+                  Synthesize Machine
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {previewState.isOpen && previewState.proposed && (
+            <ScenarioDiffModal
+              isOpen={previewState.isOpen}
+              onClose={handleCancelPreview}
+              onApply={handleApplyPreview}
+              baseScenario={previewState.base}
+              proposedScenario={previewState.proposed}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
 
   if (!isOpen) return null;
 
@@ -277,7 +428,7 @@ export const AiScenarioStudio: React.FC<AiScenarioStudioProps> = ({ isOpen, onCl
             <button
                onClick={handleGenerate}
                disabled={isGenerating || !prompt.trim()}
-               className="px-5 py-2 bg-[#1d4ed8] hover:bg-blue-600 text-white font-bold text-xs rounded disabled:opacity-45 disabled:pointer-events-none transition-all flex items-center justify-center gap-2 shadow"
+               className="px-5 py-2 bg-[#1d4ed8] hover:bg-blue-600 text-white font-bold text-xs rounded disabled:opacity-45 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow md-button"
             >
               {isGenerating ? (
                 <>

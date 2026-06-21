@@ -47,6 +47,7 @@ export interface TMState {
   loadScenario: (scenario: TMScenario) => void;
   importConfiguration: (config: any) => void;
   setSymbolAliases: (aliases: Record<string, string>) => void;
+  renameMachineState: (oldName: string, newName: string) => void;
   setRules: (rules: TMRule[]) => void;
   updateTapeSymbol: (index: number, symbol: string) => void;
   injectTapePattern: (pattern: string) => void;
@@ -71,6 +72,8 @@ export interface TMState {
   setInitialState: (stateName: string) => void;
   toggleAcceptState: (stateName: string) => void;
   clearTapeAndResetHead: () => void;
+  highlightedState: string | null;
+  setHighlightedState: (state: string | null) => void;
 }
 
 const initialStatistics: TMStatistics = {
@@ -106,6 +109,9 @@ export const useTMStore = create<TMState>()(
       diagramCheckpoints: [],
       symbolAliases: {},
       statistics: { ...initialStatistics },
+      
+      highlightedState: null,
+      setHighlightedState: (state) => set({ highlightedState: state }),
       
       editHistory: [],
       editHistoryIndex: -1,
@@ -247,6 +253,83 @@ export const useTMStore = create<TMState>()(
         });
       },
 
+      renameMachineState: (oldName, newName) => set((state) => {
+        if (!newName || oldName === newName) return state;
+        
+        const newRules = state.rules.map(r => ({
+          ...r,
+          currentState: r.currentState === oldName ? newName : r.currentState,
+          nextState: r.nextState === oldName ? newName : r.nextState,
+        }));
+
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ rules: newRules, tape: { ...state.tape } });
+
+        let newActiveScenario = state.activeScenario;
+        let newCurrentState = state.currentState;
+        let newVisited = new Set(state.visitedStates);
+        
+        if (newCurrentState === oldName) {
+            newCurrentState = newName;
+        }
+
+        let newHighlightedState = state.highlightedState;
+        if (newHighlightedState === oldName) {
+            newHighlightedState = newName;
+        }
+
+        if (newActiveScenario) {
+          const newLabels = { ...newActiveScenario.stateLabels };
+          if (newLabels[oldName]) {
+             newLabels[newName] = newLabels[oldName];
+             delete newLabels[oldName];
+          }
+          
+          const newColors = { ...newActiveScenario.stateColors };
+          if (newColors[oldName]) {
+             newColors[newName] = newColors[oldName];
+             delete newColors[oldName];
+          }
+
+          const newPositions = { ...newActiveScenario.customPositions };
+          if (newPositions[oldName]) {
+             newPositions[newName] = newPositions[oldName];
+             delete newPositions[oldName];
+          }
+
+          newActiveScenario = { 
+            ...newActiveScenario, 
+            rules: newRules,
+            initialState: newActiveScenario.initialState === oldName ? newName : newActiveScenario.initialState,
+            stateLabels: newLabels,
+            stateColors: newColors,
+            customPositions: newPositions
+          };
+          useScenariosStore.getState().updateScenario(newActiveScenario);
+        }
+
+        if (newVisited.has(oldName)) {
+           newVisited.delete(oldName);
+           newVisited.add(newName);
+        }
+
+        const newMachineHistory = state.history.map(entry => ({
+            ...entry,
+            currentState: entry.currentState === oldName ? newName : entry.currentState
+        }));
+
+        return {
+           rules: newRules,
+           editHistory: newHistory,
+           editHistoryIndex: newHistory.length - 1,
+           activeScenario: newActiveScenario,
+           currentState: newCurrentState,
+           highlightedState: newHighlightedState,
+           visitedStates: newVisited,
+           history: newMachineHistory,
+        };
+      }),
+
       setRules: (rules) => set((state) => {
         const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
         newHistory.push({ rules, tape: { ...state.tape } });
@@ -314,7 +397,7 @@ export const useTMStore = create<TMState>()(
 
         const readSymbol = tape[headPosition] || '_';
         
-        const matchingRule = rules.find(r => r.currentState === currentState && r.readSymbol === readSymbol);
+        const matchingRule = rules.find(r => r.currentState === currentState && r.readSymbol === readSymbol && r.enabled !== false);
 
         if (!matchingRule) {
           if (activeScenario?.acceptStates.includes(currentState)) {

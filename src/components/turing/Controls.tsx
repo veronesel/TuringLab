@@ -17,6 +17,7 @@ export const Controls: React.FC = () => {
   }, [isRunning, stepForward, executionSpeed]);
 
   const isDone = status === 'accepted' || status === 'rejected' || status === 'error';
+  const isIdle = status === 'idle' && !isRunning && historyIndex === 0;
 
   return (
     <div className="h-12 border-t border-border-main bg-bg-surface flex items-center justify-between px-4 shrink-0 overflow-x-auto min-w-0 no-scrollbar">
@@ -25,42 +26,42 @@ export const Controls: React.FC = () => {
           <button
             onClick={resetMachine}
             title="Restart simulation"
-            className="p-2 bg-bg-element border border-border-active rounded hover:bg-border-active text-text-secondary transition-colors mr-2"
+            className={clsx(
+              "p-2 rounded transition-colors mr-2",
+              isIdle ? "bg-bg-element border border-primary-base/50 text-primary-base animate-[pulse_2.5s_ease-in-out_infinite]" : "bg-bg-element border border-border-active hover:bg-border-active text-text-secondary"
+            )}
           >
             <RotateCcw size={16} />
           </button>
 
           <button
-            onClick={undo}
-            disabled={historyIndex <= 0 || isRunning}
-            title="Undo"
+            onClick={() => { if (historyIndex > 0 && !isRunning) undo(); }}
+            title="Undo state change (Ctrl+Z)"
             className={clsx(
               "p-2 border rounded-l transition-colors border-r-0",
-              historyIndex <= 0 || isRunning ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active"
+              historyIndex <= 0 || isRunning ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed opacity-50" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active cursor-pointer"
             )}
           >
             <Undo2 size={16} />
           </button>
           
           <button
-            onClick={redo}
-            disabled={historyIndex >= history.length - 1 || isRunning}
-            title="Redo"
+            onClick={() => { if (historyIndex < history.length - 1 && !isRunning) redo(); }}
+            title="Redo state change (Ctrl+Y)"
             className={clsx(
               "p-2 border rounded-r transition-colors mr-2",
-              historyIndex >= history.length - 1 || isRunning ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active"
+              historyIndex >= history.length - 1 || isRunning ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed opacity-50" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active cursor-pointer"
             )}
           >
             <Redo2 size={16} />
           </button>
 
           <button
-            onClick={stepBackward}
-            disabled={historyIndex <= 0 || isRunning}
-            title="Step backward"
+            onClick={() => { if (historyIndex > 0 && !isRunning) stepBackward(); }}
+            title="Step backward one cycle"
             className={clsx(
               "p-2 border rounded transition-colors",
-              historyIndex <= 0 || isRunning ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active"
+              historyIndex <= 0 || isRunning ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed opacity-50" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active cursor-pointer"
             )}
           >
             <SkipBack size={16} />
@@ -69,19 +70,22 @@ export const Controls: React.FC = () => {
           {isRunning ? (
             <button
               onClick={pause}
-              title="Pause simulation (running)"
-              className="px-6 py-2 bg-primary-dark border border-primary-base text-text-primary rounded shadow-lg shadow-primary-base/20 hover:bg-primary-base mx-1"
+              title="Pause simulation (Spacebar)"
+              className="px-6 py-2 bg-primary-dark border border-primary-base text-text-primary rounded shadow-lg shadow-primary-base/20 hover:bg-primary-base mx-1 cursor-pointer"
             >
               <Pause size={16} />
             </button>
           ) : (
             <button
-              onClick={run}
-              disabled={isDone && historyIndex === history.length - 1} // Can run if we redo-stepped back
-              title={(isDone && historyIndex === history.length - 1) ? "Simulation complete" : "Run continuously"}
+              onClick={() => { if (!(isDone && historyIndex === history.length - 1)) run(); }}
+              title={(isDone && historyIndex === history.length - 1) ? "Simulation complete - reset to run again" : "Run simulation continuously (Spacebar)"}
               className={clsx(
                 "px-6 py-2 border rounded transition-colors shadow-lg mx-1",
-                (isDone && historyIndex === history.length - 1) ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed shadow-none" : "bg-primary-dark border-primary-base text-text-primary hover:bg-primary-base shadow-primary-base/20"
+                (isDone && historyIndex === history.length - 1) 
+                  ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed opacity-50" 
+                  : isIdle 
+                    ? "bg-primary-dark border-primary-base text-text-primary hover:bg-primary-base shadow-primary-base/20 cursor-pointer animate-[pulse_2s_ease-in-out_infinite]"
+                    : "bg-primary-dark border-primary-base text-text-primary hover:bg-primary-base shadow-primary-base/20 cursor-pointer"
               )}
             >
               <Play size={16} />
@@ -89,12 +93,11 @@ export const Controls: React.FC = () => {
           )}
 
           <button
-            onClick={stepForward}
-            disabled={isRunning || (isDone && historyIndex === history.length - 1)}
-            title="Step forward"
+            onClick={() => { if (!isRunning && !(isDone && historyIndex === history.length - 1)) stepForward(); }}
+            title="Step forward one cycle (Right Arrow)"
             className={clsx(
               "p-2 border rounded transition-colors",
-              isRunning || (isDone && historyIndex === history.length - 1) ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active"
+              isRunning || (isDone && historyIndex === history.length - 1) ? "bg-bg-panel border-border-main text-text-faint cursor-not-allowed opacity-50" : "bg-bg-element border-border-active text-text-secondary hover:bg-border-active cursor-pointer"
             )}
           >
             <SkipForward size={16} />

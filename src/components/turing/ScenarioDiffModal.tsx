@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { TMScenario, TMRule } from '../../types/tm';
 import { X, Check, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,10 +13,16 @@ interface ScenarioDiffModalProps {
 }
 
 export function ScenarioDiffModal({ isOpen, onClose, onApply, baseScenario, proposedScenario }: ScenarioDiffModalProps) {
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -108,6 +115,7 @@ export function ScenarioDiffModal({ isOpen, onClose, onApply, baseScenario, prop
           </button>
         </div>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }

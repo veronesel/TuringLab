@@ -458,7 +458,7 @@ const TooltipContext = React.createContext<{
 const IconButton = ({ icon: Icon, tooltip, onClick, isActive, className = '', disabled=false }: any) => {
   const context = React.useContext(TooltipContext);
 
-  const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
     if (context) {
       context.setTooltip(tooltip, e.currentTarget);
     }
@@ -471,17 +471,19 @@ const IconButton = ({ icon: Icon, tooltip, onClick, isActive, className = '', di
   };
 
   return (
-    <div className={`relative flex items-center justify-center ${className}`}>
+    <div 
+      className={`relative flex items-center justify-center group ${className}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <button 
         onClick={onClick}
         disabled={disabled}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
         className={`p-2 rounded transition-colors flex items-center justify-center ${
            isActive 
              ? 'bg-primary-dark border border-primary-base text-text-primary' 
-             : 'bg-bg-element hover:bg-border-active text-text-secondary border border-transparent'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+             : 'bg-bg-element hover:bg-border-active text-[#3b82f6]/95 border border-transparent'
+        } ${disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
       >
         <Icon size={14} />
       </button>
@@ -502,6 +504,8 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   const activeScenario = useTMStore(state => state.activeScenario);
   const currentState = useTMStore(state => state.currentState);
   const lastRuleId = useTMStore(state => state.lastRuleId);
+  const highlightedState = useTMStore(state => state.highlightedState);
+  const setHighlightedState = useTMStore(state => state.setHighlightedState);
   const status = useTMStore(state => state.status);
   const { fitBounds, getNodes, setViewport, getZoom, fitView } = useReactFlow();
   const [autoFit, setAutoFit] = React.useState(true);
@@ -511,6 +515,9 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   const [showArrows, setShowArrows] = React.useState(true);
   const [snapToGrid, setSnapToGrid] = React.useState(true);
   const [showHowItWorks, setShowHowItWorks] = React.useState(false);
+
+  const [editingState, setEditingState] = React.useState<{id: string, value: string} | null>(null);
+  const renameMachineState = useTMStore(state => state.renameMachineState);
 
   const diagramTheme = useThemeStore(state => state.diagramTheme);
   const themeMode = useThemeStore(state => state.themeMode);
@@ -868,6 +875,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
       const isActive = stateName === currentState;
       const isUnreachable = activeScenario && !reachableStates.has(stateName);
       const isStuck = stuckStates.has(stateName);
+      const isHighlighted = stateName === highlightedState;
 
       const customColor = activeScenario?.stateColors?.[stateName];
       const customLabel = activeScenario?.stateLabels?.[stateName];
@@ -927,13 +935,45 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
          }
       }
 
-      const labelContent = customLabel || heatmapMode ? (
-        <div className="flex flex-col items-center justify-center leading-tight">
-          {customLabel && !heatmapMode && <span className="text-[11px] truncate max-w-[60px]" title={customLabel}>{customLabel}</span>}
-          {heatmapMode && <span className="text-[11px] font-bold truncate max-w-[60px]" title={tooltipText}>{stateFrequencies[stateName] || 0}</span>}
-          <span className="text-[8px] opacity-75 mt-0.5">{stateName}</span>
-        </div>
-      ) : stateName;
+      let labelContent: React.ReactNode;
+      if (editingState && editingState.id === stateName) {
+        labelContent = (
+          <form 
+            onSubmit={(e) => {
+               e.preventDefault();
+               renameMachineState(editingState.id, editingState.value);
+               setEditingState(null);
+            }}
+            className="pointer-events-auto nodrag"
+          >
+            <input
+              autoFocus
+              type="text"
+              value={editingState.value}
+              onChange={(e) => setEditingState({ ...editingState, value: e.target.value })}
+              onBlur={() => {
+                 renameMachineState(editingState.id, editingState.value);
+                 setEditingState(null);
+              }}
+              onKeyDown={(e) => {
+                 if (e.key === 'Escape') setEditingState(null);
+                 e.stopPropagation();
+              }}
+              className="bg-bg-panel border border-primary-base rounded px-1 py-0.5 text-xs text-text-primary text-center w-[60px] outline-none shadow-lg nodrag cursor-text"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+          </form>
+        );
+      } else {
+        labelContent = customLabel || heatmapMode ? (
+          <div className="flex flex-col items-center justify-center leading-tight nodrag">
+            {customLabel && !heatmapMode && <span className="text-[11px] truncate max-w-[60px]" title={customLabel}>{customLabel}</span>}
+            {heatmapMode && <span className="text-[11px] font-bold truncate max-w-[60px]" title={tooltipText}>{stateFrequencies[stateName] || 0}</span>}
+            <span className="text-[8px] opacity-75 mt-0.5">{stateName}</span>
+          </div>
+        ) : <span className="nodrag">{stateName}</span>;
+      }
 
       const baseNode = {
         id: stateName,
@@ -948,7 +988,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
             background: bgColor,
             color: isActive ? (diagramTheme === 'minimal' ? 'var(--color-primary-base)' : 'var(--color-bg-base)') : textColor,
             border: borderStyle,
-            borderColor: borderColor,
+            borderColor: isHighlighted && !isActive ? '#f59e0b' : borderColor,
             borderRadius: isAccept ? '50%' : '12px',
             width: isAccept ? 45 : 70,
             height: 45,
@@ -957,7 +997,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
             alignItems: 'center',
             fontWeight: 'bold',
             transition: 'all 0.3s ease',
-            boxShadow: isActive ? (diagramTheme === 'vibrant' ? '0 0 25px var(--color-primary-base)' : (diagramTheme === 'minimal' ? '0 0 5px var(--color-primary-base)' : '0 0 15px var(--color-primary-base)')) : (isUnreachable || isStuck ? '0 0 10px rgba(239, 68, 68, 0.4)' : 'none'),
+            boxShadow: isHighlighted && !isActive ? '0 0 0 4px rgba(245, 158, 11, 0.4), 0 0 15px rgba(245, 158, 11, 0.5)' : (isActive ? (diagramTheme === 'vibrant' ? '0 0 25px var(--color-primary-base)' : (diagramTheme === 'minimal' ? '0 0 5px var(--color-primary-base)' : '0 0 15px var(--color-primary-base)')) : (isUnreachable || isStuck ? '0 0 10px rgba(239, 68, 68, 0.4)' : 'none')),
             fontFamily: 'sans-serif',
             fontSize: '12px'
           } 
@@ -971,37 +1011,6 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
 
       return baseNode;
     });
-
-    if (activeScenario) {
-      let startX = centerX + radius - 100;
-      let startY = centerY - 100;
-      if (activeScenario.customPositions && activeScenario.customPositions['__start__']) {
-         startX = activeScenario.customPositions['__start__'].x;
-         startY = activeScenario.customPositions['__start__'].y;
-      }
-
-      newNodes.push({
-        id: '__start__',
-        type: 'custom',
-        position: { x: startX, y: startY },
-        data: { 
-          label: '',
-          style: {
-            background: 'var(--color-text-primary)',
-            border: 'none',
-            borderRadius: '50%',
-            width: 20,
-            height: 20,
-            minWidth: 20,
-          }
-        },
-        draggable: true,
-        width: 20,
-        height: 20,
-        measured: { width: 20, height: 20 },
-        className: '!transition-all !duration-300 ease-in-out',
-      });
-    }
 
     const newEdges: Edge[] = rules.map((rule, idx) => {
       const isActiveTrans = rule.id === lastRuleId;
@@ -1035,20 +1044,8 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
       };
     });
 
-    if (activeScenario) {
-      newEdges.push({
-        id: '__start_edge__',
-        source: '__start__',
-        target: activeScenario.initialState,
-        type: 'smart',
-        className: '!transition-all !duration-300 ease-in-out',
-        style: { stroke: 'var(--color-text-primary)', strokeWidth: 2 },
-        markerEnd: showArrows ? { type: MarkerType.ArrowClosed, color: 'var(--color-text-primary)' } : undefined,
-      });
-    }
-
     return { nodes: newNodes, edges: newEdges };
-  }, [rules, activeScenario, currentState, lastRuleId, status, heatmapMode, history, historyIndex, showArrows, diagramTheme, themeMode]);
+  }, [rules, activeScenario, currentState, lastRuleId, status, heatmapMode, history, historyIndex, showArrows, diagramTheme, themeMode, editingState, renameMachineState]);
 
   const doFitBounds = React.useCallback((duration = 800) => {
     const rfNodes = getNodes();
@@ -1229,6 +1226,12 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
     updateScenarioPositions(updates);
   };
 
+  const onNodeDoubleClick = React.useCallback((event: React.MouseEvent, node: Node) => {
+    if (node.id !== '__start__' && !isRunning) {
+       setEditingState({ id: node.id, value: node.id });
+    }
+  }, [isRunning]);
+
   const onNodeClick = React.useCallback((event: React.MouseEvent, node: Node) => {
     if (node.id !== '__start__') {
        setSelectedNode(node.id);
@@ -1238,8 +1241,9 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
 
   const onPaneClick = React.useCallback(() => {
     setSelectedNode(null);
+    setHighlightedState(null);
     closeContextMenu();
-  }, [closeContextMenu]);
+  }, [closeContextMenu, setHighlightedState]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -1297,11 +1301,11 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
       // Use the actual container element and let html-to-image figure out the size
       const dataUrl = await toPng(el, {
         backgroundColor: window.getComputedStyle(document.body).backgroundColor,
-        pixelRatio: 2,
+        pixelRatio: 8, // High-quality export
       });
       const a = document.createElement('a');
       a.href = dataUrl;
-      a.download = `turing-diagram-${Date.now()}.png`;
+      a.download = `turing-diagram-hq-${Date.now()}.png`;
       a.click();
     } catch(e) {
       console.error('Failed to take snapshot', e);
@@ -1370,7 +1374,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
                 <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
                 
                 <IconButton icon={ArrowRightLeft} isActive={showArrows} tooltip={`Arrows: ${showArrows ? 'ON' : 'OFF'}`} onClick={() => setShowArrows(!showArrows)} />
-                <IconButton icon={Camera} tooltip="Snapshot" onClick={handleSnapshot} />
+                <IconButton icon={Camera} tooltip="High-Res Export (PNG)" onClick={handleSnapshot} />
                 <IconButton icon={Undo2} tooltip="Step Back" disabled={historyIndex <= 0 || isRunning} onClick={undo} />
                 
                 {/* Checkpoint Dropdown */}
@@ -1726,6 +1730,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
           onNodesChange={onNodesChange}
           onNodeDragStop={handleNodeDragStop}
           onNodeClick={onNodeClick}
+          onNodeDoubleClick={onNodeDoubleClick}
           onPaneClick={onPaneClick}
           onNodeContextMenu={onNodeContextMenu}
           onConnect={onConnect}

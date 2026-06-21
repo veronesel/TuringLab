@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Settings2, Palette, Sparkles, HelpCircle, Volume2, VolumeX, LayoutGrid, Target, Film } from 'lucide-react';
 import { useThemeStore, DiagramTheme } from '../../store/themeStore';
 import { playSubtleClick } from '../../utils/audio';
@@ -9,6 +10,9 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const { 
     diagramTheme, 
     setDiagramTheme, 
@@ -23,7 +27,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setShowExecutionTimeline
   } = useThemeStore();
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const themes: Array<{
     id: DiagramTheme;
@@ -67,7 +71,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     },
   ];
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-bg-panel border border-border-main w-full max-w-lg rounded-xl shadow-2xl flex flex-col max-h-[90vh] p-6 relative overflow-hidden">
         <button 
@@ -289,6 +293,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

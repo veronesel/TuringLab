@@ -7,6 +7,7 @@ export interface TMRule {
   nextState: string;
   writeSymbol: string;
   moveDirection: Direction;
+  enabled?: boolean;
 }
 
 export interface TMScenario {

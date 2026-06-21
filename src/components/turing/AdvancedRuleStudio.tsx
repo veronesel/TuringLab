@@ -1045,7 +1045,7 @@ export const AdvancedRuleStudio: React.FC<AdvancedRuleStudioProps> = ({ isOpen, 
                         type="button"
                         onClick={handleAiGenerate}
                         disabled={aiIsGenerating || !aiPrompt.trim()}
-                        className="w-full bg-[#1d4ed8] hover:bg-blue-600 font-sans font-bold text-white py-2 rounded-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wide disabled:opacity-45 disabled:pointer-events-none shadow shrink-0"
+                        className="w-full bg-[#1d4ed8] hover:bg-blue-600 font-sans font-bold text-white py-2 rounded-lg transition-all flex items-center justify-center gap-2 text-xs uppercase tracking-wide disabled:opacity-45 disabled:cursor-not-allowed shadow shrink-0"
                       >
                         {aiIsGenerating ? (
                           <>
@@ -1508,7 +1508,7 @@ export const AdvancedRuleStudio: React.FC<AdvancedRuleStudioProps> = ({ isOpen, 
                 type="button"
                 onClick={executeRenameRenovator}
                 disabled={!renamerFrom || !renamerTo}
-                className="text-[10px] uppercase tracking-wider text-black bg-[#e2e8f0] hover:bg-white font-bold p-1 rounded font-sans transition-all disabled:opacity-30 disabled:pointer-events-none"
+                className="text-[10px] uppercase tracking-wider text-black bg-[#e2e8f0] hover:bg-white font-bold p-1 rounded font-sans transition-all disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Apply Refactor Bulk
               </button>

@@ -462,12 +462,15 @@ export const Tape: React.FC = () => {
            <button 
              onClick={() => setScrollOffset(0)}
              className={clsx(
-               "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold uppercase transition-all border cursor-pointer",
+               "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold uppercase transition-all border",
                scrollOffset === 0 
-                 ? "bg-primary-base/5 text-primary-base/50 border-primary-base/15 opacity-70 cursor-default select-none pointer-events-none" 
+                 ? "bg-primary-base/5 text-primary-base/50 border-primary-base/15 opacity-70 cursor-not-allowed select-none" 
                  : "bg-primary-base/20 hover:bg-primary-base/30 border-primary-base/40 text-primary-base shadow-[0_0_8px_rgba(var(--color-primary-base),0.25)]"
              )}
-             title="Automatically snap and center the viewport on the current tape head position"
+             title={scrollOffset === 0 
+               ? "Viewport is already centered and locked on the current tape head position" 
+               : "Automatically snap and center the viewport on the current tape head position"
+             }
            >
              <Target size={11} className={clsx("shrink-0", scrollOffset !== 0 && "animate-pulse")} />
              <span>Snap to Head</span>
@@ -1096,7 +1099,7 @@ export const Tape: React.FC = () => {
                   }
                 }}
                 disabled={historyIndex === 0}
-                className="hover:text-primary-base transition-colors font-bold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                className="hover:text-primary-base transition-colors font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 ⏪ Start (0)
               </button>
@@ -1121,7 +1124,7 @@ export const Tape: React.FC = () => {
                   }
                 }}
                 disabled={historyIndex === history.length - 1}
-                className="hover:text-primary-base transition-colors font-bold disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                className="hover:text-primary-base transition-colors font-bold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 Latest ({Math.max(0, history.length - 1)}) ⏩
               </button>

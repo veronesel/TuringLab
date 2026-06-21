@@ -12,6 +12,8 @@ interface AutocompleteInputProps {
   symbolAliases?: Record<string, string>;
   stateColor?: string;
   stateColors?: Record<string, string>;
+  onClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
@@ -26,6 +28,8 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   symbolAliases = {},
   stateColor,
   stateColors,
+  onClick,
+  onContextMenu,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -126,6 +130,8 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
           onChange(e.target.value);
           setIsOpen(true);
         }}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
         onFocus={() => setIsOpen(true)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
