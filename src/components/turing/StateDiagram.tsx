@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useCallback } from 'react';
 import { ReactFlow, Controls, ControlButton, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges, MiniMap, Connection, getNodesBounds, getViewportForBounds, Panel, useOnViewportChange } from '@xyflow/react';
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force';
 import { motion } from 'motion/react';
-import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, MousePointerClick, Crosshair, Grid, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, MousePointerClick, Crosshair, Grid, CheckCircle2, XCircle, AlertTriangle, Info, Wand2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import '@xyflow/react/dist/style.css';
 import { useTMStore } from '../../store/tmStore';
@@ -515,6 +515,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   const [showArrows, setShowArrows] = React.useState(true);
   const [snapToGrid, setSnapToGrid] = React.useState(true);
   const [showHowItWorks, setShowHowItWorks] = React.useState(false);
+  const [showVisualHelp, setShowVisualHelp] = React.useState(false);
 
   const [editingState, setEditingState] = React.useState<{id: string, value: string} | null>(null);
   const renameMachineState = useTMStore(state => state.renameMachineState);
@@ -522,6 +523,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   const diagramTheme = useThemeStore(state => state.diagramTheme);
   const themeMode = useThemeStore(state => state.themeMode);
   const autoArrangeEnabled = useThemeStore(state => state.autoArrangeEnabled);
+  const setAutoArrangeEnabled = useThemeStore(state => state.setAutoArrangeEnabled);
 
   const addDiagramCheckpoint = useTMStore(state => state.addDiagramCheckpoint);
   const removeDiagramCheckpoint = useTMStore(state => state.removeDiagramCheckpoint);
@@ -586,9 +588,9 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
     }
   }, [checkScroll]);
 
-  useOnViewportChange({
-    onChange: (viewport) => setZoomLevel(Math.round(viewport.zoom * 100)),
-  });
+  // useOnViewportChange({
+  //   onChange: (viewport) => setZoomLevel(Math.round(viewport.zoom * 100)),
+  // });
 
   const handleResetZoom = useCallback(() => {
     fitView({ minZoom: 1, maxZoom: 1, duration: 300 });
@@ -877,6 +879,17 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
       const isStuck = stuckStates.has(stateName);
       const isHighlighted = stateName === highlightedState;
 
+      let trailRank = -1;
+      if (!isActive && ((historyIndex || 0) > 0) && history) {
+        for (let i = 1; i <= 6; i++) {
+          if (historyIndex - i >= 0 && history[historyIndex - i].currentState === stateName) {
+            trailRank = i;
+            break;
+          }
+        }
+      }
+      const trailOpacity = trailRank > 0 && !heatmapMode ? Math.max(0, 0.7 - trailRank * 0.1) : 0;
+
       const customColor = activeScenario?.stateColors?.[stateName];
       const customLabel = activeScenario?.stateLabels?.[stateName];
 
@@ -984,6 +997,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
           isActive: isActive,
           isAccept: isAccept,
           isStart: isStart,
+          trailOpacity: trailOpacity,
           style: {
             background: bgColor,
             color: isActive ? (diagramTheme === 'minimal' ? 'var(--color-primary-base)' : 'var(--color-bg-base)') : textColor,
@@ -1014,13 +1028,24 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
 
     const newEdges: Edge[] = rules.map((rule, idx) => {
       const isActiveTrans = rule.id === lastRuleId;
-      let strokeWidthVal = isActiveTrans ? 3 : 1.5;
+      let edgeTrailRank = -1;
+      if (!isActiveTrans && ((historyIndex || 0) > 0) && history) {
+        for (let i = 1; i <= 6; i++) {
+          if (historyIndex - i >= 0 && history[historyIndex - i].lastRuleId === rule.id) {
+            edgeTrailRank = i;
+            break;
+          }
+        }
+      }
+      const edgeTrailOpacity = edgeTrailRank > 0 && !heatmapMode ? Math.max(0, 0.7 - edgeTrailRank * 0.1) : 0;
+
+      let strokeWidthVal = isActiveTrans || edgeTrailOpacity > 0 ? 3 : 1.5;
       if (diagramTheme === 'minimal') {
-        strokeWidthVal = isActiveTrans ? 2 : 1;
+        strokeWidthVal = isActiveTrans || edgeTrailOpacity > 0 ? 2 : 1;
       } else if (diagramTheme === 'high-contrast') {
-        strokeWidthVal = isActiveTrans ? 4.5 : 2.5;
+        strokeWidthVal = isActiveTrans || edgeTrailOpacity > 0 ? 4.5 : 2.5;
       } else if (diagramTheme === 'vibrant') {
-        strokeWidthVal = isActiveTrans ? 3.5 : 1.8;
+        strokeWidthVal = isActiveTrans || edgeTrailOpacity > 0 ? 3.5 : 1.8;
       }
 
       return {
@@ -1031,15 +1056,23 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
         type: 'smart',
         animated: isActiveTrans,
         className: '!transition-all !duration-300 ease-in-out',
+        data: { trailOpacity: edgeTrailOpacity },
         style: {
-          stroke: isActiveTrans ? 'var(--color-primary-base)' : 'var(--color-border-active)',
+          stroke: isActiveTrans || edgeTrailOpacity > 0 ? 'var(--color-primary-base)' : 'var(--color-border-active)',
           strokeWidth: strokeWidthVal,
+          strokeOpacity: edgeTrailOpacity > 0 && !isActiveTrans ? edgeTrailOpacity : undefined,
         },
-        labelStyle: { fill: isActiveTrans ? 'var(--color-primary-base)' : 'var(--color-text-muted)', fontWeight: isActiveTrans ? 'bold' : 'normal', fontSize: 10, fontFamily: 'monospace' },
+        labelStyle: { 
+          fill: isActiveTrans || edgeTrailOpacity > 0 ? 'var(--color-primary-base)' : 'var(--color-text-muted)', 
+          fontWeight: isActiveTrans ? 'bold' : 'normal', 
+          fontSize: 10, 
+          fontFamily: 'monospace',
+          opacity: edgeTrailOpacity > 0 && !isActiveTrans ? Math.max(0.4, edgeTrailOpacity) : 1
+        },
         labelBgStyle: { fill: 'var(--color-bg-surface)', fillOpacity: 0.8 },
         markerEnd: showArrows ? {
           type: MarkerType.ArrowClosed,
-          color: isActiveTrans ? 'var(--color-primary-base)' : 'var(--color-border-active)',
+          color: isActiveTrans || edgeTrailOpacity > 0 ? 'var(--color-primary-base)' : 'var(--color-border-active)',
         } : undefined,
       };
     });
@@ -1081,7 +1114,44 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   const [liveNodes, setLiveNodes] = React.useState<Node[]>(nodes);
   
   useEffect(() => {
-    setLiveNodes(nodes);
+    setLiveNodes((prevNodes) => {
+      // If node lengths mismatch, reset completely
+      if (prevNodes.length !== nodes.length) return nodes;
+      
+      let changed = false;
+      const nextNodes = nodes.map(n => {
+        const prev = prevNodes.find(p => p.id === n.id);
+        if (!prev) return n;
+        
+        const prevData = prev.data as any;
+        const nData = n.data as any;
+
+        // Explicitly compare state fields, avoid JSON.stringify on React elements
+        const isDataEqual = 
+            prevData.isActive === nData.isActive &&
+            prevData.isAccept === nData.isAccept &&
+            prevData.isStart === nData.isStart &&
+            prevData.trailOpacity === nData.trailOpacity &&
+            prevData.style?.background === nData.style?.background &&
+            prevData.style?.borderColor === nData.style?.borderColor &&
+            prevData.style?.boxShadow === nData.style?.boxShadow;
+        
+        const isPosEqual = prev.position.x === n.position.x && prev.position.y === n.position.y;
+        
+        if (!isDataEqual || !isPosEqual) {
+           changed = true;
+           return { 
+             ...n, 
+             measured: prev.measured, 
+             width: prev.width, 
+             height: prev.height 
+           };
+        }
+        return prev;
+      });
+      
+      return changed ? nextNodes : prevNodes;
+    });
   }, [nodes]);
 
   const onNodesChange = React.useCallback(
@@ -1354,6 +1424,7 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
                 className="flex-1 w-full overflow-y-auto no-scrollbar flex flex-col gap-1.5 min-h-0 relative select-none"
               >
                 <IconButton icon={HelpCircle} tooltip="How It Works" onClick={() => setShowHowItWorks(true)} />
+                <IconButton icon={Info} tooltip="Visual Guide" onClick={() => setShowVisualHelp(true)} />
                 <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
                 
                 <div className="relative flex items-center justify-center shrink-0">
@@ -1368,7 +1439,13 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
                 </div>
 
                 <IconButton icon={Crosshair} isActive={autoFit} tooltip={`Auto-Fit: ${autoFit ? 'ON' : 'OFF'}`} onClick={() => setAutoFit(!autoFit)} />
-                <IconButton icon={LayoutGrid} tooltip="Re-Layout" onClick={handleRelayout} />
+                <IconButton 
+                  icon={Wand2} 
+                  isActive={autoArrangeEnabled} 
+                  tooltip={`Auto-Layout: ${autoArrangeEnabled ? 'ON' : 'OFF'}`} 
+                  onClick={() => setAutoArrangeEnabled(!autoArrangeEnabled)} 
+                />
+                <IconButton icon={LayoutGrid} tooltip="Manual Re-Layout" onClick={handleRelayout} />
                 <IconButton icon={Grid} isActive={snapToGrid} tooltip={`Snap to Grid: ${snapToGrid ? 'ON' : 'OFF'}`} onClick={() => setSnapToGrid(!snapToGrid)} />
                 
                 <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
@@ -1971,6 +2048,146 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
                 className="px-4 py-1.5 bg-primary-base hover:bg-primary-base/90 text-bg-panel font-bold text-[10px] uppercase tracking-wider rounded transition-colors shadow-sm animate-pulse-subtle"
               >
                 Got it, close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Guide Modal */}
+      {showVisualHelp && (
+        <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-bg-surface border border-border-main rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[80vh] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-3.5 border-b border-border-main bg-bg-element shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                   <Info size={14} className="text-blue-400" />
+                </div>
+                <div className="flex flex-col">
+                   <span className="font-bold text-text-primary text-xs uppercase tracking-wider">Diagram Visual Guide</span>
+                   <span className="text-[10px] text-text-muted mt-0.5">
+                     Understanding nodes, edges, and execution state
+                   </span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowVisualHelp(false)}
+                className="text-text-muted hover:text-text-primary hover:bg-[#2c2c2c] rounded-lg p-1.5 transition-colors shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body content */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-6 text-xs leading-relaxed text-text-secondary select-text">
+               
+               {/* State Nodes */}
+               <div className="space-y-3">
+                 <h4 className="font-bold text-text-primary uppercase tracking-wide text-[10px] border-b border-border-main pb-1">State Nodes</h4>
+                 
+                 <div className="grid gap-3">
+                   <div className="flex items-center gap-3 bg-bg-panel/50 p-2 rounded border border-border-main/50">
+                     <div className="w-[45px] h-[45px] rounded-full border-[4px] border-double border-blue-500 bg-bg-element flex items-center justify-center shrink-0">
+                       <span className="text-[10px] text-white font-bold font-sans">halt</span>
+                     </div>
+                     <div>
+                       <span className="font-bold text-text-primary text-[10px] block mb-0.5">Accept / Halt State</span>
+                       <span className="text-[9.5px]">Represented by a circle with a double border. The machine stops execution successfully when reaching this state.</span>
+                     </div>
+                   </div>
+
+                   <div className="flex items-center gap-3 bg-bg-panel/50 p-2 rounded border border-border-main/50">
+                     <div className="w-[70px] h-[45px] rounded-xl border-[2px] border-solid border-green-500 bg-bg-element flex items-center justify-center shrink-0">
+                       <span className="text-[10px] text-white font-bold font-sans">start</span>
+                     </div>
+                     <div>
+                       <span className="font-bold text-text-primary text-[10px] block mb-0.5">Initial State</span>
+                       <span className="text-[9.5px]">Represented by a rectangle with a green solid border. Execution begins here.</span>
+                     </div>
+                   </div>
+
+                   <div className="flex items-center gap-3 bg-bg-panel/50 p-2 rounded border border-border-main/50">
+                     <div className="w-[70px] h-[45px] rounded-xl border-[2px] border-solid border-red-500 bg-[#450a0a] flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(239,68,68,0.4)]">
+                       <span className="text-[10px] text-[#fca5a5] font-bold font-sans">error</span>
+                     </div>
+                     <div>
+                       <span className="font-bold text-text-primary text-[10px] block mb-0.5">Unreachable / Stuck State</span>
+                       <span className="text-[9.5px]">A state with a red border and glowing warning shadow. Indicates that no transition sequence can reach this state, or the machine halts here without explicitly being an 'accept' state.</span>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+
+               {/* Transitions */}
+               <div className="space-y-3">
+                 <h4 className="font-bold text-text-primary uppercase tracking-wide text-[10px] border-b border-border-main pb-1">Transitions & Edges</h4>
+                 
+                 <div className="flex items-start gap-3 bg-bg-panel/50 p-3 rounded border border-border-main/50">
+                   <div className="w-16 h-8 flex items-center justify-center shrink-0 relative mt-1">
+                     <div className="absolute w-full h-[1.5px] bg-[var(--color-border-active)]"></div>
+                     <div className="absolute right-0 w-2 h-2 border-r-[1.5px] border-b-[1.5px] border-[var(--color-border-active)] rotate-[-45deg]"></div>
+                     <div className="absolute -top-3 bg-bg-surface px-1 text-[9px] font-mono text-text-muted border border-border-main rounded font-normal">0→1,R</div>
+                   </div>
+                   <div>
+                     <span className="font-bold text-text-primary text-[10px] block mb-0.5">Transition Label (Read → Write, Move)</span>
+                     <span className="text-[9.5px]">Edges show the logic condition. 
+                       <br/><code className="bg-neutral-800 text-amber-400 px-1 py-0.5 rounded font-mono font-bold mr-1">0</code> represents what the machine reads.
+                       <br/><code className="bg-neutral-800 text-green-400 px-1 py-0.5 rounded font-mono font-bold mx-1">1</code> represents what it writes to the tape.
+                       <br/><code className="bg-neutral-800 text-blue-400 px-1 py-0.5 rounded font-mono font-bold mx-1">R</code> is the direction the head moves (Right, Left, Stay).
+                     </span>
+                   </div>
+                 </div>
+               </div>
+
+               {/* Execution Highlights */}
+               <div className="space-y-3">
+                 <h4 className="font-bold text-text-primary uppercase tracking-wide text-[10px] border-b border-border-main pb-1">Live Execution Highlights</h4>
+                 
+                 <div className="grid gap-3">
+                   <div className="flex items-center gap-3 bg-bg-panel/50 p-2 rounded border border-border-main/50">
+                      <div className="w-[70px] h-[45px] rounded-xl border-[2px] border-solid border-white bg-[var(--color-primary-base)] flex items-center justify-center shrink-0 shadow-[0_0_15px_var(--color-primary-base)] relative overflow-hidden">
+                         <div className="absolute inset-0 bg-white/20 rounded-xl opacity-50"></div>
+                         <span className="text-[10px] text-white font-bold font-sans">active</span>
+                      </div>
+                     <div className="flex-1">
+                       <span className="font-bold text-[var(--color-primary-base)] text-[10px] block mb-0.5">Active State Node</span>
+                       <span className="text-[9.5px]">The currently executing state shines brightly in the primary color with a glowing aura and ripples during state entry.</span>
+                     </div>
+                   </div>
+
+                   <div className="flex items-center gap-3 bg-bg-panel/50 p-2 rounded border border-border-main/50">
+                      <div className="w-[70px] h-[45px] rounded-xl border-[2px] border-solid border-border-main bg-bg-element flex items-center justify-center shrink-0 shadow-[0_0_0_4px_rgba(245,158,11,0.4),0_0_15px_rgba(245,158,11,0.5)]">
+                         <span className="text-[10px] text-text-primary font-bold font-sans">focus</span>
+                      </div>
+                     <div className="flex-1">
+                       <span className="font-bold text-amber-500 text-[10px] block mb-0.5">Cursor Focus / Highlight</span>
+                       <span className="text-[9.5px]">States glow in amber when you click them in the code editor, showing their exact location in the diagram.</span>
+                     </div>
+                   </div>
+
+                   <div className="flex items-start gap-3 bg-bg-panel/50 p-3 rounded border border-border-main/50">
+                     <div className="w-16 h-8 flex items-center justify-center shrink-0 relative mt-1">
+                       <div className="absolute w-full h-[3px] bg-[var(--color-primary-base)] shadow-[0_0_8px_var(--color-primary-base)] animate-pulse"></div>
+                       <div className="absolute right-0 w-2.5 h-2.5 border-r-[3px] border-b-[3px] border-[var(--color-primary-base)] rotate-[-45deg] scale-110"></div>
+                     </div>
+                     <div>
+                       <span className="font-bold text-[var(--color-primary-base)] text-[10px] block mb-0.5">Active Edge Path & Trail</span>
+                       <span className="text-[9.5px]">The transition path just executed flashes fully opaque. Recently visited states and paths leave a gradually fading visual trail in the primary color, helping you track the machine's history.</span>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-bg-element border-t border-border-main flex justify-end shrink-0">
+              <button 
+                onClick={() => setShowVisualHelp(false)}
+                className="px-4 py-1.5 bg-primary-base hover:bg-primary-base/90 text-bg-panel font-bold text-[10px] uppercase tracking-wider rounded transition-colors shadow-sm"
+              >
+                Close Guide
               </button>
             </div>
           </div>

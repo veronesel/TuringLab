@@ -1,0 +1,236 @@
+src/components/turing/AdvancedRuleStudio.tsx:66: setDraftRules(storeRules);
+src/components/turing/AdvancedRuleStudio.tsx:230: setRenamerFrom('');
+src/components/turing/AdvancedRuleStudio.tsx:231: setRenamerTo('');
+src/components/turing/AdvancedRuleStudio.tsx:234: setRenamerSuccess(true);
+src/components/turing/AdvancedRuleStudio.tsx:239: setRules(draftRules);
+src/components/turing/AdvancedRuleStudio.tsx:246: setJsonInput(JSON.stringify(exportObject, null, 2));
+src/components/turing/AdvancedRuleStudio.tsx:247: setJsonError(null);
+src/components/turing/AdvancedRuleStudio.tsx:248: setShowDataPanel(true);
+src/components/turing/AdvancedRuleStudio.tsx:273: setDraftRules(validated);
+src/components/turing/AdvancedRuleStudio.tsx:274: setShowDataPanel(false);
+src/components/turing/AdvancedRuleStudio.tsx:275: setJsonError(null);
+src/components/turing/AdvancedRuleStudio.tsx:277: setJsonError(e.message || "Failed parsing rules schema.");
+src/components/turing/AdvancedRuleStudio.tsx:314: setAiIsGenerating(true);
+src/components/turing/AdvancedRuleStudio.tsx:315: setAiError(null);
+src/components/turing/AdvancedRuleStudio.tsx:355: setGeneratedScenario(newScenario);
+src/components/turing/AdvancedRuleStudio.tsx:357: setAiError(e.message || "Failed to generate.");
+src/components/turing/AdvancedRuleStudio.tsx:359: setAiIsGenerating(false);
+src/components/turing/AdvancedRuleStudio.tsx:381: setDraftRules(generatedScenario.rules);
+src/components/turing/AdvancedRuleStudio.tsx:413: setPreviewState({
+src/components/turing/AdvancedRuleStudio.tsx:431: setPreviewState({ isOpen: false, base: null, proposed: null });
+src/components/turing/AdvancedRuleStudio.tsx:436: setPreviewState({ isOpen: false, base: null, proposed: null });
+src/components/turing/AiScenarioStudio.tsx:39: setIsGeneratingIdea(true);
+src/components/turing/AiScenarioStudio.tsx:40: setError(null);
+src/components/turing/AiScenarioStudio.tsx:51: setPrompt(data.idea);
+src/components/turing/AiScenarioStudio.tsx:54: setError(e.message || "Failed to generate scenario description");
+src/components/turing/AiScenarioStudio.tsx:56: setIsGeneratingIdea(false);
+src/components/turing/AiScenarioStudio.tsx:62: setIsGenerating(true);
+src/components/turing/AiScenarioStudio.tsx:63: setError(null);
+src/components/turing/AiScenarioStudio.tsx:110: setPreviewState({
+src/components/turing/AiScenarioStudio.tsx:118: setError(e.message);
+src/components/turing/AiScenarioStudio.tsx:119: setIsGenerating(false);
+src/components/turing/AiScenarioStudio.tsx:136: setPrompt("");
+src/components/turing/AiScenarioStudio.tsx:137: setPreviewState({ isOpen: false, base: null, proposed: null, formatted: null });
+src/components/turing/AiScenarioStudio.tsx:138: setIsGenerating(false);
+src/components/turing/AiScenarioStudio.tsx:143: setPreviewState({ isOpen: false, base: null, proposed: null, formatted: null });
+src/components/turing/AiScenarioStudio.tsx:144: setIsGenerating(false);
+src/components/turing/AutocompleteInput.tsx:69: setIsOpen(false);
+src/components/turing/AutocompleteInput.tsx:80: setActiveIndex(0);
+src/components/turing/AutocompleteInput.tsx:86: setIsOpen(true);
+src/components/turing/AutocompleteInput.tsx:104: setIsOpen(false);
+src/components/turing/AutocompleteInput.tsx:111: setIsOpen(false);
+src/components/turing/AutocompleteInput.tsx:131: setIsOpen(true);
+src/components/turing/Controls.tsx:117: setExecutionSpeed(Math.max(10, Math.round(2000 / speedVal)));
+src/components/turing/HelpSidebar.tsx:51: setWidth(newWidth);
+src/components/turing/RejectionExplanationModal.tsx:82: setIsActionLoading(true);
+src/components/turing/RejectionExplanationModal.tsx:83: setFixStatus('validating');
+src/components/turing/RejectionExplanationModal.tsx:96: setFixStatus('success');
+src/components/turing/RejectionExplanationModal.tsx:100: useTMStore.setState({ status: 'idle', errorMessage: null });
+src/components/turing/RejectionExplanationModal.tsx:105: setFixStatus('idle');
+src/components/turing/RejectionExplanationModal.tsx:122: setRules(finalRules);
+src/components/turing/RejectionExplanationModal.tsx:130: setFixStatus('success');
+src/components/turing/RejectionExplanationModal.tsx:132: useTMStore.setState({ status: 'idle', errorMessage: null });
+src/components/turing/RejectionExplanationModal.tsx:135: setFixStatus('idle');
+src/components/turing/RejectionExplanationModal.tsx:139: setFixStatus('persisted_error');
+src/components/turing/RejectionExplanationModal.tsx:140: setPersistentErrorMessage(
+src/components/turing/RejectionExplanationModal.tsx:147: setFixStatus('persisted_error');
+src/components/turing/RejectionExplanationModal.tsx:148: setPersistentErrorMessage(err?.message || 'An unexpected error occurred during execution parsing validation.');
+src/components/turing/RejectionExplanationModal.tsx:150: setIsActionLoading(false);
+src/components/turing/RejectionExplanationModal.tsx:183: setRules(rulesWithIds);
+src/components/turing/RejectionExplanationModal.tsx:204: setRules(updatedRules);
+src/components/turing/RejectionExplanationModal.tsx:232: useTMStore.setState({ status: 'idle', errorMessage: null });
+src/components/turing/RejectionExplanationModal.tsx:233: setFixStatus('idle');
+src/components/turing/RejectionExplanationModal.tsx:242: setIsSubmittingSupport(true);
+src/components/turing/RejectionExplanationModal.tsx:248: setSupportSubmitted(true);
+src/components/turing/RejectionExplanationModal.tsx:249: setIsSubmittingSupport(false);
+src/components/turing/RejectionExplanationModal.tsx:254: resetMachine();
+src/components/turing/RejectionExplanationModal.tsx:255: setFixStatus('idle');
+src/components/turing/RejectionExplanationModal.tsx:262: setFixStatus('idle');
+src/components/turing/RejectionExplanationModal.tsx:268: setFixStatus('idle');
+src/components/turing/RejectionExplanationModal.tsx:269: setShowSupportForm(false);
+src/components/turing/RejectionExplanationModal.tsx:270: setSupportSubmitted(false);
+src/components/turing/RejectionExplanationModal.tsx:333: setShowSupportForm(false);
+src/components/turing/RejectionExplanationModal.tsx:334: setSupportSubmitted(false);
+src/components/turing/RejectionExplanationModal.tsx:344: setShowSupportForm(false);
+src/components/turing/RejectionExplanationModal.tsx:345: setSupportSubmitted(false);
+src/components/turing/RuleEditor.tsx:201: setLocalRules(rules);
+src/components/turing/RuleEditor.tsx:203: setBulkText(rulesToText(rules));
+src/components/turing/RuleEditor.tsx:204: setBulkErrors([]);
+src/components/turing/RuleEditor.tsx:397: setHighlightedRuleId(ruleId);
+src/components/turing/RuleEditor.tsx:399: setHighlightedRuleId(null);
+src/components/turing/RuleEditor.tsx:405: setDraggedIndex(index);
+src/components/turing/RuleEditor.tsx:407: e.dataTransfer.setData('text/plain', index.toString());
+src/components/turing/RuleEditor.tsx:418: setLocalRules(updated);
+src/components/turing/RuleEditor.tsx:419: setDraggedIndex(index);
+src/components/turing/RuleEditor.tsx:423: setDraggedIndex(null);
+src/components/turing/RuleEditor.tsx:424: setDragRowId(null);
+src/components/turing/RuleEditor.tsx:444: setIsFixingRules(true);
+src/components/turing/RuleEditor.tsx:466: setLocalRules(rulesWithIds);
+src/components/turing/RuleEditor.tsx:467: setRules(rulesWithIds);
+src/components/turing/RuleEditor.tsx:471: useTMStore.setState({ status: 'idle', errorMessage: null });
+src/components/turing/RuleEditor.tsx:478: setIsFixingRules(false);
+src/components/turing/RuleEditor.tsx:484: setSelectedRules(new Set());
+src/components/turing/RuleEditor.tsx:497: setSelectedRules(newSelected);
+src/components/turing/RuleEditor.tsx:503: setLocalRules(newRules);
+src/components/turing/RuleEditor.tsx:504: setRules(newRules);
+src/components/turing/RuleEditor.tsx:505: setSelectedRules(new Set());
+src/components/turing/RuleEditor.tsx:517: setLocalRules(newRules);
+src/components/turing/RuleEditor.tsx:518: setRules(newRules);
+src/components/turing/RuleEditor.tsx:570: setBulkText(rulesToText(cleaned));
+src/components/turing/RuleEditor.tsx:571: setBulkErrors([]);
+src/components/turing/RuleEditor.tsx:578: setBulkText(val);
+src/components/turing/RuleEditor.tsx:580: setBulkErrors(errors);
+src/components/turing/RuleEditor.tsx:587: setBulkErrors(errors);
+src/components/turing/RuleEditor.tsx:590: setRules(rulesList);
+src/components/turing/RuleEditor.tsx:591: setLocalRules(rulesList);
+src/components/turing/RuleEditor.tsx:592: setIsBulkMode(false);
+src/components/turing/RuleEditor.tsx:594: setRules(localRules);
+src/components/turing/RuleEditor.tsx:665: setLocalRules(updatedRules);
+src/components/turing/RuleEditor.tsx:666: setRules(updatedRules);
+src/components/turing/RuleEditor.tsx:667: setShowQuickAdd(false);
+src/components/turing/RuleEditor.tsx:696: setBulkErrors(errors);
+src/components/turing/RuleEditor.tsx:699: setLocalRules(rulesList);
+src/components/turing/RuleEditor.tsx:700: setIsBulkMode(false);
+src/components/turing/RuleEditor.tsx:702: setBulkText(rulesToText(localRules));
+src/components/turing/RuleEditor.tsx:703: setBulkErrors([]);
+src/components/turing/RuleEditor.tsx:704: setIsBulkMode(true);
+src/components/turing/RuleEditor.tsx:870: setBulkErrors(errors);
+src/components/turing/RuleEditor.tsx:873: setLocalRules(rulesList);
+src/components/turing/RuleEditor.tsx:874: setIsBulkMode(false);
+src/components/turing/RuleEditor.tsx:886: setCopied(true);
+src/components/turing/RuleEditor.tsx:898: setIsBulkMode(false);
+src/components/turing/RuleEditor.tsx:899: setBulkErrors([]);
+src/components/turing/RuleEditor.tsx:1182: setHighlightedState(highlightedState === rule.currentState ? null : rule.currentState);
+src/components/turing/RuleEditor.tsx:1246: setHighlightedState(highlightedState === rule.nextState ? null : rule.nextState);
+src/components/turing/ScenarioDiffModal.tsx:19: setMounted(true);
+src/components/turing/ScenarioLibrary.tsx:362: setTab("active");
+src/components/turing/ScenarioLibrary.tsx:372: setTab("library");
+src/components/turing/ScenarioLibrary.tsx:385: setTab("active");
+src/components/turing/ScenarioLibrary.tsx:398: setTab("synthesize");
+src/components/turing/ScenarioLibrary.tsx:536: setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
+src/components/turing/ScenarioLibrary.tsx:551: setPreviewScenario(sc);
+src/components/turing/ScenarioLibrary.tsx:561: setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
+src/components/turing/ScenarioLibrary.tsx:965: setPreviewScenario(null);
+src/components/turing/SettingsModal.tsx:165: setSoundEnabled(nextVal);
+src/components/turing/SettingsModal.tsx:199: setAutoArrangeEnabled(nextVal);
+src/components/turing/SettingsModal.tsx:233: setShowExpectedOutcome(nextVal);
+src/components/turing/SettingsModal.tsx:267: setShowExecutionTimeline(nextVal);
+src/components/turing/SmartNode.tsx:12: setJustActivated(true);
+src/components/turing/SmartNode.tsx:14: setJustActivated(false);
+src/components/turing/StateDiagram.tsx:463: context.setTooltip(tooltip, e.currentTarget);
+src/components/turing/StateDiagram.tsx:469: context.setTooltip(null, null);
+src/components/turing/StateDiagram.tsx:549: setActiveTooltip(null);
+src/components/turing/StateDiagram.tsx:555: setActiveTooltip({ text, top });
+src/components/turing/StateDiagram.tsx:567: setCanScrollUp(scrollUp);
+src/components/turing/StateDiagram.tsx:568: setCanScrollDown(scrollDown);
+src/components/turing/StateDiagram.tsx:616: setContextMenu({
+src/components/turing/StateDiagram.tsx:633: setHoveredNode({
+src/components/turing/StateDiagram.tsx:647: setHoveredNode({
+src/components/turing/StateDiagram.tsx:657: setHoveredNode(null);
+src/components/turing/StateDiagram.tsx:664: setHoveredEdge({
+src/components/turing/StateDiagram.tsx:677: setHoveredEdge({
+src/components/turing/StateDiagram.tsx:687: setHoveredEdge(null);
+src/components/turing/StateDiagram.tsx:958: setEditingState(null);
+src/components/turing/StateDiagram.tsx:969: setEditingState(null);
+src/components/turing/StateDiagram.tsx:972: if (e.key === 'Escape') setEditingState(null);
+src/components/turing/StateDiagram.tsx:1301: setEditingState({ id: node.id, value: node.id });
+src/components/turing/StateDiagram.tsx:1307: setSelectedNode(node.id);
+src/components/turing/StateDiagram.tsx:1313: setSelectedNode(null);
+src/components/turing/StateDiagram.tsx:1314: setHighlightedState(null);
+src/components/turing/StateDiagram.tsx:1327: setInitialState(connection.target);
+src/components/turing/StateDiagram.tsx:1340: setRules([...rules, newRule]);
+src/components/turing/StateDiagram.tsx:1462: if (!showCheckpoints) setTooltip("Checkpoints (Click to open)", e.currentTarget);
+src/components/turing/StateDiagram.tsx:1968: setInitialState(contextMenu.id);
+src/components/turing/Statistics.tsx:526: setSps(currentSteps - lastSteps);
+src/components/turing/SymbolAliasesPanel.tsx:20: setSymbolAliases({ ...symbolAliases, [newSymbol.trim()]: newAlias.trim() });
+src/components/turing/SymbolAliasesPanel.tsx:21: setNewSymbol('');
+src/components/turing/SymbolAliasesPanel.tsx:22: setNewAlias('');
+src/components/turing/SymbolAliasesPanel.tsx:28: setSymbolAliases(next);
+src/components/turing/Tape.tsx:238: localStorage.setItem('turing-historical-steps', JSON.stringify(updated));
+src/components/turing/Tape.tsx:288: setSelectionStart(index);
+src/components/turing/Tape.tsx:289: setSelectionEnd(index);
+src/components/turing/Tape.tsx:290: (e.target as HTMLElement).setPointerCapture(e.pointerId);
+src/components/turing/Tape.tsx:294: setHoveredCell(index);
+src/components/turing/Tape.tsx:296: setSelectionEnd(index);
+src/components/turing/Tape.tsx:336: setSelectionStart(null);
+src/components/turing/Tape.tsx:337: setSelectionEnd(null);
+src/components/turing/Tape.tsx:353: setScrollOffset(0);
+src/components/turing/Tape.tsx:373: localStorage.setItem('tm-tape-border-color', customBorderColor);
+src/components/turing/Tape.tsx:377: localStorage.setItem('tm-tape-text-color', customTextColor);
+src/components/turing/Tape.tsx:385: setShowPatternDialog(false);
+src/components/turing/Tape.tsx:386: setCustomPattern("");
+src/components/turing/Tape.tsx:526: setCustomBorderColor('default');
+src/components/turing/Tape.tsx:527: setCustomTextColor('default');
+src/components/turing/Tape.tsx:857: setEditingBookmark({
+src/components/turing/Tape.tsx:934: e.dataTransfer.setData('bookmarkCell', cell.index.toString());
+src/components/turing/Tape.tsx:1153: setEditingBookmark({
+src/components/turing/Tape.tsx:1266: setEditingBookmark({
+src/components/turing/Tape.tsx:1331: setEditingBookmark({
+src/components/turing/Tape.tsx:1351: setEditingBookmark({
+src/components/turing/Tape.tsx:1370: setEditingBookmark({
+src/components/turing/Tape.tsx:1388: setEditingBookmark({
+src/components/turing/Tape.tsx:1413: setEditingBookmark({
+src/components/turing/Tape.tsx:1457: setEditingBookmark(null);
+src/components/turing/TourOverlay.tsx:23: setTargetRect(el.getBoundingClientRect());
+src/components/turing/TourOverlay.tsx:25: setTargetRect(null);
+src/App.tsx:121: setAutosavePrompt(parsed);
+src/App.tsx:134: setAutosavePrompt(null);
+src/App.tsx:138: setAutosavePrompt(null);
+src/App.tsx:258: setActiveLayoutId(`turing-layout-${preset}`);
+src/App.tsx:266: setActiveSidebarTab('rules');
+src/App.tsx:267: setIsSidebarCollapsed(false); // Classic rules layout keeps left sidebar visible (15%)
+src/App.tsx:269: setActiveSidebarTab('debugger');
+src/App.tsx:270: setIsSidebarCollapsed(true); // Collapsed left sidebar to focus on tape performance
+src/App.tsx:272: setIsSidebarCollapsed(true); // Collapsed left sidebar to focus on state diagram
+src/App.tsx:274: setIsSidebarCollapsed(false); // Classic library layout keeps left sidebar expanded and wide (32%)
+src/App.tsx:276: setIsSidebarCollapsed(false); // Classic default workspace keeps left sidebar visible (18%)
+src/App.tsx:277: setActiveSidebarTab('rules');
+src/App.tsx:286: document.documentElement.setAttribute('data-theme', themeMode);
+src/App.tsx:314: setIsRejectionModalOpen(true);
+src/App.tsx:323: setIsFullscreen(!!document.fullscreenElement);
+src/App.tsx:394: pdf.setFontSize(18);
+src/App.tsx:398: pdf.setFontSize(10);
+src/App.tsx:399: pdf.setTextColor(100);
+src/App.tsx:407: pdf.setTextColor(0);
+src/App.tsx:408: pdf.setFontSize(14);
+src/App.tsx:412: pdf.setFontSize(10);
+src/App.tsx:421: pdf.setFontSize(14);
+src/App.tsx:434: pdf.setFontSize(10);
+src/App.tsx:435: pdf.setFont('courier');
+src/App.tsx:443: pdf.setFontSize(14);
+src/App.tsx:444: pdf.setFont('helvetica');
+src/App.tsx:448: pdf.setFontSize(9);
+src/App.tsx:449: pdf.setFont('courier');
+src/App.tsx:509: localStorage.setItem('tm-autosave', JSON.stringify({ timestamp: Date.now(), data: exportData }));
+src/App.tsx:510: setLastAutoSave(new Date());
+src/App.tsx:569: resetMachine();
+src/App.tsx:615: setIsExplaining(true);
+src/App.tsx:616: setExplanation(null);
+src/App.tsx:624: setExplanation(data.explanation || "No explanation provided.");
+src/App.tsx:626: setExplanation("Failed to generate explanation. " + e.message);
+src/App.tsx:628: setIsExplaining(false);
+src/App.tsx:676: setIsSidebarCollapsed(false);
+src/App.tsx:867: localStorage.setItem('react-resizable-panels:turing-layout-custom-h', JSON.stringify(layout));
+src/App.tsx:888: setIsSidebarCollapsed(isCollapsed || false);
+src/App.tsx:928: localStorage.setItem('react-resizable-panels:turing-layout-custom-center-h', JSON.stringify(layout));
+src/App.tsx:948: localStorage.setItem('react-resizable-panels:turing-layout-custom-center-v', JSON.stringify(layout));

@@ -1095,7 +1095,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                       onDragStart={(e) => handleDragStart(e, index)}
                       onDragOver={(e) => handleDragOver(e, index)}
                       onDragEnd={handleDragEnd}
-                      title={isHighlightedByState ? `Highlighted because it involves state: "${highlightedState}"` : undefined}
+                      title={isHighlightedByState ? `State "${highlightedState}" is highlighted.\nThis rule means: If in state '${rule.currentState}' and reading symbol '${rule.readSymbol || '_'}', then write symbol '${rule.writeSymbol || '_'}', move ${rule.moveDirection === 'R' ? 'Right' : rule.moveDirection === 'L' ? 'Left' : 'Stay'}, and transition to state '${rule.nextState}'.` : undefined}
                       className={`transition-all duration-300 relative ${
                         draggedIndex === index
                           ? 'opacity-40 bg-[#161B22]/30 border-l-2 border-dashed border-primary-base'

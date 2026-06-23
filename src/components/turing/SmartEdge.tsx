@@ -63,7 +63,7 @@ export default function SmartEdge({
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               background: labelBgStyle?.fill ? String(labelBgStyle.fill) : 'var(--color-bg-surface)',
-              opacity: labelBgStyle?.fillOpacity !== undefined ? Number(labelBgStyle.fillOpacity) : 0.8,
+              opacity: labelStyle?.opacity !== undefined ? Number(labelStyle.opacity) : (labelBgStyle?.fillOpacity !== undefined ? Number(labelBgStyle.fillOpacity) : 0.8),
               padding: '2px 4px',
               borderRadius: 4,
               fontSize: labelStyle?.fontSize || 10,
