@@ -10,6 +10,7 @@ export interface TMState {
   // Scenario Data
   activeScenario: TMScenario | null;
   rules: TMRule[];
+  rulesAtLastRun: TMRule[] | null;
   
   // Machine State
   tape: Record<number, string>; // cellIndex -> symbol
@@ -35,7 +36,7 @@ export interface TMState {
   statistics: TMStatistics;
 
   // Edit History
-  editHistory: { rules: TMRule[]; tape: Record<number, string> }[];
+  editHistory: { rules: TMRule[]; tape: Record<number, string>; activeScenario?: TMScenario | null }[];
   editHistoryIndex: number;
 
   // Actions
@@ -72,6 +73,9 @@ export interface TMState {
   setInitialState: (stateName: string) => void;
   toggleAcceptState: (stateName: string) => void;
   clearTapeAndResetHead: () => void;
+  autoFixUnreachableStates: () => void;
+  autoFixConnectUnreachableStates: () => void;
+  autoFixSetInitialState: (stateName: string) => void;
   highlightedState: string | null;
   setHighlightedState: (state: string | null) => void;
 }
@@ -91,6 +95,7 @@ export const useTMStore = create<TMState>()(
     (set, get) => ({
       activeScenario: null,
       rules: [],
+      rulesAtLastRun: null,
       tape: {},
       headPosition: 0,
       currentState: 'q0',
@@ -118,13 +123,24 @@ export const useTMStore = create<TMState>()(
       
       pushEdit: (rules, tape) => set((state) => {
         const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
-        newHistory.push({ rules, tape: { ...tape } });
+        newHistory.push({ rules, tape: { ...tape }, activeScenario: state.activeScenario ? JSON.parse(JSON.stringify(state.activeScenario)) : null });
         return { editHistory: newHistory, editHistoryIndex: newHistory.length - 1 };
       }),
       undoEdit: () => set((state) => {
         if (state.editHistoryIndex > 0) {
            const newIndex = state.editHistoryIndex - 1;
            const prevState = state.editHistory[newIndex];
+           if (prevState.activeScenario !== undefined) {
+             if (prevState.activeScenario) {
+               useScenariosStore.getState().updateScenario(prevState.activeScenario);
+             }
+             return { 
+               editHistoryIndex: newIndex, 
+               rules: prevState.rules, 
+               tape: prevState.tape,
+               activeScenario: prevState.activeScenario
+             };
+           }
            return { editHistoryIndex: newIndex, rules: prevState.rules, tape: prevState.tape };
         }
         return state;
@@ -133,6 +149,17 @@ export const useTMStore = create<TMState>()(
         if (state.editHistoryIndex < state.editHistory.length - 1) {
            const newIndex = state.editHistoryIndex + 1;
            const nextState = state.editHistory[newIndex];
+           if (nextState.activeScenario !== undefined) {
+             if (nextState.activeScenario) {
+               useScenariosStore.getState().updateScenario(nextState.activeScenario);
+             }
+             return { 
+               editHistoryIndex: newIndex, 
+               rules: nextState.rules, 
+               tape: nextState.tape,
+               activeScenario: nextState.activeScenario
+             };
+           }
            return { editHistoryIndex: newIndex, rules: nextState.rules, tape: nextState.tape };
         }
         return state;
@@ -190,6 +217,7 @@ export const useTMStore = create<TMState>()(
         set({
           activeScenario: null,
           rules: [],
+          rulesAtLastRun: [],
           tape: {},
           headPosition: 0,
           currentState: '',
@@ -223,6 +251,7 @@ export const useTMStore = create<TMState>()(
         set({
           activeScenario: scenario,
           rules: scenario.rules,
+          rulesAtLastRun: scenario.rules,
           tape: initialTape,
           headPosition: scenario.initialHeadPosition,
           currentState: scenario.initialState,
@@ -241,7 +270,7 @@ export const useTMStore = create<TMState>()(
           historyIndex: 0,
           stepCount: 0,
           visitedStates: new Set([scenario.initialState]),
-          editHistory: [{ rules: scenario.rules, tape: { ...initialTape } }],
+          editHistory: [{ rules: scenario.rules, tape: { ...initialTape }, activeScenario: JSON.parse(JSON.stringify(scenario)) }],
           editHistoryIndex: 0,
           statistics: { 
             ...initialStatistics,
@@ -468,7 +497,8 @@ export const useTMStore = create<TMState>()(
           history: [...newHistory, newState],
           historyIndex: historyIndex + 1,
           status: newStatus as any,
-          isRunning: isAccepted ? false : get().isRunning
+          isRunning: isAccepted ? false : get().isRunning,
+          rulesAtLastRun: [...rules]
         });
 
         if (activeScenario) {
@@ -599,11 +629,11 @@ export const useTMStore = create<TMState>()(
 
       run: () => {
          // Check if we are at history end, if so we can just set isRunning
-         const { isRunning } = get();
+         const { isRunning, rules } = get();
          if (!isRunning && useThemeStore.getState().soundEnabled) {
            playMachineStart();
          }
-         set({ isRunning: true, isPaused: false });
+         set({ isRunning: true, isPaused: false, rulesAtLastRun: [...rules] });
       },
       pause: () => set({ isRunning: false, isPaused: true }),
       setExecutionSpeed: (speed) => set({ executionSpeed: speed }),
@@ -706,13 +736,229 @@ export const useTMStore = create<TMState>()(
             uniqueStatesVisited: 1
           }
         };
-      })
+      }),
+      autoFixUnreachableStates: () => set((state) => {
+        const unreachable: string[] = [];
+        const startState = state.activeScenario?.initialState || 'q0';
+        
+        // Gather all states
+        const allStates = new Set<string>();
+        allStates.add(startState);
+        state.rules.forEach(rule => {
+          allStates.add(rule.currentState);
+          allStates.add(rule.nextState);
+        });
+        if (state.activeScenario?.acceptStates) {
+          state.activeScenario.acceptStates.forEach(s => allStates.add(s));
+        }
+
+        // Reachability graph from startState
+        const adj = new Map<string, Set<string>>();
+        allStates.forEach(s => adj.set(s, new Set()));
+        
+        state.rules.forEach(rule => {
+          if (rule.enabled !== false) {
+            if (!adj.has(rule.currentState)) adj.set(rule.currentState, new Set());
+            adj.get(rule.currentState)!.add(rule.nextState);
+          }
+        });
+
+        const visited = new Set<string>();
+        const queue = [startState];
+        visited.add(startState);
+        
+        while (queue.length > 0) {
+          const u = queue.shift()!;
+          const neighbors = adj.get(u);
+          if (neighbors) {
+            for (const v of neighbors) {
+              if (!visited.has(v)) {
+                visited.add(v);
+                queue.push(v);
+              }
+            }
+          }
+        }
+
+        allStates.forEach(s => {
+          if (!visited.has(s)) {
+            unreachable.push(s);
+          }
+        });
+
+        if (unreachable.length === 0) return {};
+
+        const unreachableSet = new Set(unreachable);
+
+        // Filter out rules where currentState or nextState is unreachable
+        const newRules = state.rules.filter(rule => 
+          !unreachableSet.has(rule.currentState) && !unreachableSet.has(rule.nextState)
+        );
+
+        let newActiveScenario = state.activeScenario;
+        if (newActiveScenario) {
+          const newAcceptStates = newActiveScenario.acceptStates.filter(s => !unreachableSet.has(s));
+          
+          // Clean up positions, labels, colors
+          const newLabels = { ...newActiveScenario.stateLabels };
+          const newColors = { ...newActiveScenario.stateColors };
+          const newPositions = { ...newActiveScenario.customPositions };
+          
+          unreachable.forEach(s => {
+            delete newLabels[s];
+            delete newColors[s];
+            delete newPositions[s];
+          });
+
+          newActiveScenario = {
+            ...newActiveScenario,
+            rules: newRules,
+            acceptStates: newAcceptStates,
+            stateLabels: newLabels,
+            stateColors: newColors,
+            customPositions: newPositions
+          };
+          useScenariosStore.getState().updateScenario(newActiveScenario);
+        }
+
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ 
+          rules: newRules, 
+          tape: { ...state.tape }, 
+          activeScenario: newActiveScenario ? JSON.parse(JSON.stringify(newActiveScenario)) : null 
+        });
+
+        return {
+          rules: newRules,
+          editHistory: newHistory,
+          editHistoryIndex: newHistory.length - 1,
+          activeScenario: newActiveScenario
+        };
+      }),
+      autoFixConnectUnreachableStates: () => set((state) => {
+        const unreachable: string[] = [];
+        const startState = state.activeScenario?.initialState || 'q0';
+        
+        // Gather all states
+        const allStates = new Set<string>();
+        allStates.add(startState);
+        state.rules.forEach(rule => {
+          allStates.add(rule.currentState);
+          allStates.add(rule.nextState);
+        });
+        if (state.activeScenario?.acceptStates) {
+          state.activeScenario.acceptStates.forEach(s => allStates.add(s));
+        }
+
+        // Reachability graph from startState
+        const adj = new Map<string, Set<string>>();
+        allStates.forEach(s => adj.set(s, new Set()));
+        
+        state.rules.forEach(rule => {
+          if (rule.enabled !== false) {
+            if (!adj.has(rule.currentState)) adj.set(rule.currentState, new Set());
+            adj.get(rule.currentState)!.add(rule.nextState);
+          }
+        });
+
+        const visited = new Set<string>();
+        const queue = [startState];
+        visited.add(startState);
+        
+        while (queue.length > 0) {
+          const u = queue.shift()!;
+          const neighbors = adj.get(u);
+          if (neighbors) {
+            for (const v of neighbors) {
+              if (!visited.has(v)) {
+                visited.add(v);
+                queue.push(v);
+              }
+            }
+          }
+        }
+
+        allStates.forEach(s => {
+          if (!visited.has(s)) {
+            unreachable.push(s);
+          }
+        });
+
+        if (unreachable.length === 0) return {};
+
+        // To make unreachable states reachable, we add a dummy transition from startState to each unreachable state
+        const newRules = [...state.rules];
+        unreachable.forEach(targetState => {
+          const hasBlankTransition = state.rules.some(r => r.currentState === startState && r.readSymbol === '_');
+          let readSymbol = '_';
+          if (hasBlankTransition) {
+             const existingSymbols = new Set(state.rules.filter(r => r.currentState === startState).map(r => r.readSymbol));
+             const candidates = ['*', '0', '1', 'a', 'b', 'c'];
+             const available = candidates.find(c => !existingSymbols.has(c));
+             readSymbol = available || '*';
+          }
+
+          newRules.push({
+            id: uuidv4(),
+            currentState: startState,
+            readSymbol,
+            nextState: targetState,
+            writeSymbol: readSymbol,
+            moveDirection: 'S',
+            enabled: true
+          });
+        });
+
+        let newActiveScenario = state.activeScenario;
+        if (newActiveScenario) {
+          newActiveScenario = {
+            ...newActiveScenario,
+            rules: newRules
+          };
+          useScenariosStore.getState().updateScenario(newActiveScenario);
+        }
+
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ 
+          rules: newRules, 
+          tape: { ...state.tape }, 
+          activeScenario: newActiveScenario ? JSON.parse(JSON.stringify(newActiveScenario)) : null 
+        });
+
+        return {
+          rules: newRules,
+          editHistory: newHistory,
+          editHistoryIndex: newHistory.length - 1,
+          activeScenario: newActiveScenario
+        };
+      }),
+      autoFixSetInitialState: (stateName) => set((state) => {
+        if (!state.activeScenario) return {};
+        
+        const newScenario = { ...state.activeScenario, initialState: stateName };
+        useScenariosStore.getState().updateScenario(newScenario);
+
+        const newHistory = state.editHistory.slice(0, state.editHistoryIndex + 1);
+        newHistory.push({ 
+          rules: state.rules, 
+          tape: { ...state.tape }, 
+          activeScenario: JSON.parse(JSON.stringify(newScenario)) 
+        });
+
+        return { 
+          activeScenario: newScenario,
+          currentState: state.historyIndex === 0 ? stateName : state.currentState,
+          editHistory: newHistory,
+          editHistoryIndex: newHistory.length - 1
+        };
+      }),
     }),
     {
       name: 'turing-machine-state',
       partialize: (state) => ({
         activeScenario: state.activeScenario,
         rules: state.rules,
+        rulesAtLastRun: state.rulesAtLastRun,
         tape: state.tape,
         headPosition: state.headPosition,
         currentState: state.currentState,

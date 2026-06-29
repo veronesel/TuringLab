@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTMStore } from '../../store/tmStore';
 import { TMScenario } from '../../types/tm';
@@ -27,6 +27,18 @@ export const AiScenarioStudio: React.FC<AiScenarioStudioProps> = ({ isOpen = fal
     proposed: TMScenario | null;
     formatted: TMScenario | null;
   }>({ isOpen: false, base: null, proposed: null, formatted: null });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && onClose && !inline) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose, inline]);
 
   const activeInstanceDetails = useTMStore(state => state.activeScenario);
   const loadScenario = useTMStore(state => state.loadScenario);
@@ -104,7 +116,8 @@ export const AiScenarioStudio: React.FC<AiScenarioStudioProps> = ({ isOpen = fal
         ...newScenario,
         id: (modifyActive && activeInstanceDetails) ? activeInstanceDetails.id : `ai-gen-${Date.now()}`,
         category: "AI Generated",
-        name: (modifyActive && activeInstanceDetails) ? activeInstanceDetails.name : newScenario.name
+        name: (modifyActive && activeInstanceDetails) ? activeInstanceDetails.name : newScenario.name,
+        tags: ["ai", "generated", "custom"]
       };
 
       setPreviewState({

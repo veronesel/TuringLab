@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { TMRule, Direction } from '../../types/tm';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, AlertCircle, RotateCw, FileText, Table, Search, X, GripVertical, Palette, ChevronDown, Zap, Eye, EyeOff, Check } from 'lucide-react';
+import { Plus, Trash2, Save, Wand2, Maximize2, AlertTriangle, AlertCircle, RotateCw, FileText, Table, Search, X, GripVertical, Palette, ChevronDown, Zap, Eye, EyeOff, Check, Undo2, Redo2 } from 'lucide-react';
 import { AutocompleteInput } from './AutocompleteInput';
 import { playSubtleClick } from '../../utils/audio';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface RuleEditorProps {
   onOpenStudio?: () => void;
@@ -20,6 +21,50 @@ const rulesToText = (rulesList: TMRule[]): string => {
     const nextSt = r.nextState;
     return `${cur} ${readSym} ${writeSym} ${dir} ${nextSt}`;
   }).join('\n');
+};
+
+// Determines if a bulk text line has been added, modified, or remains unchanged compared to rulesAtLastRun
+const getLineDiffState = (
+  line: string, 
+  rulesAtLastRun: TMRule[] | null
+): 'added' | 'modified' | 'unchanged' => {
+  if (!rulesAtLastRun) return 'unchanged';
+  
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+    return 'unchanged';
+  }
+
+  let parts: string[] = [];
+  if (trimmed.includes(',')) {
+    parts = trimmed.split(',').map(p => p.trim());
+  } else {
+    parts = trimmed.split(/\s+/).map(p => p.trim());
+  }
+
+  if (parts.length < 5) {
+    return 'added'; // Incomplete/newly typed rules count as added
+  }
+
+  const [currentState, readSymbol, writeSymbol, moveDirection, nextState] = parts;
+  const dir = moveDirection.toUpperCase();
+
+  // Find matching rule by key (currentState, readSymbol) in rulesAtLastRun
+  const matchingRule = rulesAtLastRun.find(
+    r => r.currentState === currentState && r.readSymbol === (readSymbol === '_' ? '_' : readSymbol)
+  );
+
+  if (!matchingRule) {
+    return 'added';
+  }
+
+  // If found, check if any outputs/settings changed
+  const isChanged = 
+    matchingRule.writeSymbol !== (writeSymbol === '_' ? '_' : writeSymbol) ||
+    matchingRule.moveDirection !== dir ||
+    matchingRule.nextState !== nextState;
+
+  return isChanged ? 'modified' : 'unchanged';
 };
 
 // Utility to parse aligned text or CSV back to structured TMRules
@@ -91,6 +136,116 @@ const QUICK_TEMPLATES = [
   }
 ];
 
+const RULE_PATTERNS = [
+  {
+    name: 'Binary Increment',
+    description: 'Increments a binary number starting at the rightmost digit.',
+    content: `# Binary Increment
+# Increment a binary number (e.g. 1011 -> 1100). Starts at rightmost digit (q0).
+# State   Read  Write  Dir  NextState
+q0        0     1      S    halt
+q0        1     0      L    q0
+q0        _     1      S    halt`
+  },
+  {
+    name: 'Move to End',
+    description: 'Moves the tape head right to the end of the non-blank input.',
+    content: `# Move to End
+# Move head to the rightmost end of the non-blank tape.
+# State   Read  Write  Dir  NextState
+q0        0     0      R    q0
+q0        1     1      R    q0
+q0        _     _      L    halt`
+  },
+  {
+    name: 'Binary Copy',
+    description: 'Copies a binary string separated by a blank (e.g. 10 -> 10_10).',
+    content: `# Binary Copy
+# Copies a binary string of 0s and 1s to the right of a blank separator.
+# State   Read  Write  Dir  NextState
+q0        0     X      R    q0_0
+q0        1     Y      R    q0_1
+q0        _     _      L    q_restore
+q0_0      0     0      R    q0_0
+q0_0      1     1      R    q0_0
+q0_0      _     _      R    q_write0
+q0_1      0     0      R    q0_1
+q0_1      1     1      R    q0_1
+q0_1      _     _      R    q_write1
+q_write0  0     0      R    q_write0
+q_write0  1     1      R    q_write0
+q_write0  _     0      L    q_return
+q_write1  0     0      R    q_write1
+q_write1  1     1      R    q_write1
+q_write1  _     1      L    q_return
+q_return  0     0      L    q_return
+q_return  1     1      L    q_return
+q_return  _     _      L    q_findmarker
+q_findmarker 0  0      L    q_findmarker
+q_findmarker 1  1      L    q_findmarker
+q_findmarker X  0      R    q0
+q_findmarker Y  1      R    q0
+q_restore X     0      L    q_restore
+q_restore Y     1      L    q_restore
+q_restore _     _      R    halt`
+  },
+  {
+    name: 'Unary Copy',
+    description: 'Copies a sequence of 1s separated by a blank (e.g., 111 -> 111_111).',
+    content: `# Unary Copy
+# Copy a sequence of 1s (e.g., 111 -> 111_111)
+# State   Read  Write  Dir  NextState
+q0        1     X      R    q1
+q0        _     _      S    q_cleanup
+q1        1     1      R    q1
+q1        _     _      R    q2
+q2        1     1      R    q2
+q2        _     1      L    q3
+q3        1     1      L    q3
+q3        _     _      L    q4
+q4        1     1      L    q4
+q4        X     1      R    q0
+q_cleanup X     1      R    q_cleanup
+q_cleanup _     _      S    halt`
+  },
+  {
+    name: 'Palindrome Checker',
+    description: 'Accepts binary palindromes, rejects otherwise.',
+    content: `# Palindrome Checker
+# Accepts binary palindrome, halts or rejects.
+# State   Read  Write  Dir  NextState
+q0        0     _      R    q0_match0
+q0        1     _      R    q0_match1
+q0        _     _      S    accept
+q0_match0 0     0      R    q0_match0
+q0_match0 1     1      R    q0_match0
+q0_match0 _     _      L    q1_check0
+q0_match1 0     0      R    q0_match1
+q0_match1 1     1      R    q0_match1
+q0_match1 _     _      L    q2_check1
+q1_check0 0     _      L    q3_return
+q1_check0 1     1      S    reject
+q1_check0 _     _      S    accept
+q2_check1 1     _      L    q3_return
+q2_check1 0     0      S    reject
+q2_check1 _     _      S    accept
+q3_return 0     0      L    q3_return
+q3_return 1     1      L    q3_return
+q3_return _     _      R    q0`
+  },
+  {
+    name: 'Clear Tape',
+    description: 'Erases all non-blank symbols off the tape.',
+    content: `# Clear Tape
+# Erase all non-blank symbols
+# State   Read  Write  Dir  NextState
+q0        0     _      R    q0
+q0        1     _      R    q0
+q0        X     _      R    q0
+q0        _     _      S    halt`
+  }
+];
+
 export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const rules = useTMStore(state => state.rules);
   const setRules = useTMStore(state => state.setRules);
@@ -105,11 +260,17 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   const updateStateColor = useTMStore(state => state.updateStateColor);
   const setHighlightedState = useTMStore(state => state.setHighlightedState);
   const highlightedState = useTMStore(state => state.highlightedState);
+  const rulesAtLastRun = useTMStore(state => state.rulesAtLastRun);
+  const undoEdit = useTMStore(state => state.undoEdit);
+  const redoEdit = useTMStore(state => state.redoEdit);
+  const editHistoryIndex = useTMStore(state => state.editHistoryIndex);
+  const editHistory = useTMStore(state => state.editHistory);
 
   const [localRules, setLocalRules] = useState<TMRule[]>(rules);
   const [isBulkMode, setIsBulkMode] = useState<boolean>(false);
   const [bulkText, setBulkText] = useState<string>('');
   const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const [isPatternsOpen, setIsPatternsOpen] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -124,6 +285,522 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const symbolAliases = useTMStore(state => state.symbolAliases);
+
+  // Syntax highlighting editor refs & functions
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const preRef = React.useRef<HTMLPreElement>(null);
+  const lineNumbersRef = React.useRef<HTMLDivElement>(null);
+
+  const [editorScroll, setEditorScroll] = React.useState({ scrollTop: 0, scrollLeft: 0 });
+  const [hoveredError, setHoveredError] = React.useState<{
+    title: string;
+    message: string;
+    formalRef: string;
+    x: number;
+    y: number;
+    line: number;
+  } | null>(null);
+
+  const lineNumbersText = React.useMemo(() => {
+    const linesCount = bulkText.split('\n').length;
+    return Array.from({ length: linesCount }, (_, i) => i + 1).join('\n');
+  }, [bulkText]);
+
+  const diffStats = React.useMemo(() => {
+    if (!rulesAtLastRun) return { added: 0, modified: 0, total: 0 };
+    let added = 0;
+    let modified = 0;
+    
+    localRules.forEach(rule => {
+      const matching = rulesAtLastRun.find(r => r.id === rule.id);
+      if (!matching) {
+        const matchingByKey = rulesAtLastRun.find(
+          r => r.currentState === rule.currentState && r.readSymbol === rule.readSymbol
+        );
+        if (!matchingByKey) added++;
+      } else {
+        const isChanged = 
+          matching.currentState !== rule.currentState ||
+          matching.readSymbol !== rule.readSymbol ||
+          matching.writeSymbol !== rule.writeSymbol ||
+          matching.moveDirection !== rule.moveDirection ||
+          matching.nextState !== rule.nextState ||
+          matching.enabled !== rule.enabled;
+        if (isChanged) modified++;
+      }
+    });
+    
+    return { added, modified, total: added + modified };
+  }, [rulesAtLastRun, localRules]);
+
+  const [autocomplete, setAutocomplete] = React.useState<{
+    tokenIndex: number;
+    query: string;
+    replaceStart: number;
+    lineIndex: number;
+    columnIndex: number;
+    suggestions: string[];
+    activeIndex: number;
+  } | null>(null);
+
+  const getAutocompleteContext = (text: string, caretPos: number) => {
+    if (caretPos === 0) return null;
+    const textBeforeCursor = text.substring(0, caretPos);
+    const lines = textBeforeCursor.split('\n');
+    const currentLineIndex = lines.length - 1;
+    const currentLineUpToCursor = lines[currentLineIndex];
+    
+    // If line is a comment or empty, no autocomplete
+    const trimmedLine = currentLineUpToCursor.trim();
+    if (trimmedLine.startsWith('#') || trimmedLine.startsWith('//')) {
+      return null;
+    }
+    
+    // Parse words on the current line before the cursor
+    const words: { text: string; start: number; end: number }[] = [];
+    let currentWord = '';
+    let wordStart = 0;
+    
+    for (let i = 0; i < currentLineUpToCursor.length; i++) {
+      const char = currentLineUpToCursor[i];
+      if (/\s/.test(char)) {
+        if (currentWord) {
+          words.push({ text: currentWord, start: wordStart, end: i });
+          currentWord = '';
+        }
+      } else {
+        if (!currentWord) {
+          wordStart = i;
+        }
+        currentWord += char;
+      }
+    }
+    if (currentWord) {
+      words.push({ text: currentWord, start: wordStart, end: currentLineUpToCursor.length });
+    }
+    
+    const endsWithSpace = /\s/.test(currentLineUpToCursor.slice(-1));
+    let tokenIndex = 0;
+    let query = '';
+    let replaceStart = caretPos;
+    
+    if (words.length === 0) {
+      tokenIndex = 0;
+      query = '';
+      replaceStart = caretPos;
+    } else {
+      if (endsWithSpace) {
+        tokenIndex = words.length;
+        query = '';
+        replaceStart = caretPos;
+      } else {
+        tokenIndex = words.length - 1;
+        const lastWord = words[words.length - 1];
+        query = lastWord.text;
+        const lineStartPos = textBeforeCursor.length - currentLineUpToCursor.length;
+        replaceStart = lineStartPos + lastWord.start;
+      }
+    }
+    
+    // We only suggest for the 5 standard parts of a rule
+    if (tokenIndex > 4) return null;
+    
+    return {
+      tokenIndex,
+      query,
+      replaceStart,
+      lineIndex: currentLineIndex,
+      columnIndex: currentLineUpToCursor.length,
+    };
+  };
+
+  const updateAutocomplete = (text: string, caretPos: number) => {
+    const ctx = getAutocompleteContext(text, caretPos);
+    if (!ctx) {
+      setAutocomplete(null);
+      return;
+    }
+    
+    let suggestionsList: string[] = [];
+    if (ctx.tokenIndex === 0) {
+      suggestionsList = uniqueStates;
+    } else if (ctx.tokenIndex === 1 || ctx.tokenIndex === 2) {
+      suggestionsList = uniqueSymbols;
+    } else if (ctx.tokenIndex === 3) {
+      suggestionsList = ['L', 'R', 'S'];
+    } else if (ctx.tokenIndex === 4) {
+      const states = new Set([...uniqueStates, 'halt', 'accept', 'reject']);
+      suggestionsList = Array.from(states);
+    }
+    
+    const queryLower = ctx.query.toLowerCase();
+    const filtered = suggestionsList
+      .filter(s => s.toLowerCase().includes(queryLower))
+      .sort((a, b) => {
+        const aLower = a.toLowerCase();
+        const bLower = b.toLowerCase();
+        const aStartsWith = aLower.startsWith(queryLower);
+        const bStartsWith = bLower.startsWith(queryLower);
+        if (aStartsWith && !bStartsWith) return -1;
+        if (!aStartsWith && bStartsWith) return 1;
+        return aLower.localeCompare(bLower);
+      });
+      
+    if (filtered.length === 0) {
+      setAutocomplete(null);
+    } else {
+      setAutocomplete(prev => {
+        const prevActive = (prev && prev.query === ctx.query) ? prev.activeIndex : 0;
+        return {
+          ...ctx,
+          suggestions: filtered,
+          activeIndex: prevActive >= filtered.length ? 0 : prevActive,
+        };
+      });
+    }
+  };
+
+  const applySuggestion = (suggestion: string) => {
+    if (!autocomplete) return;
+    const { replaceStart, tokenIndex } = autocomplete;
+    
+    const textBefore = bulkText.substring(0, replaceStart);
+    const textAfter = bulkText.substring(textareaRef.current?.selectionStart || replaceStart);
+    
+    const hasWhitespaceAfter = textAfter.length > 0 && /\s/.test(textAfter[0]);
+    const suffix = (tokenIndex < 4 && !hasWhitespaceAfter) ? ' ' : '';
+    
+    const newText = textBefore + suggestion + suffix + textAfter;
+    setBulkText(newText);
+    
+    const { errors } = textToRules(newText);
+    setBulkErrors(errors);
+    
+    const newCaretPos = replaceStart + suggestion.length + suffix.length;
+    setAutocomplete(null);
+    
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = newCaretPos;
+      }
+    }, 10);
+  };
+
+  const handleSelectionOrMovement = () => {
+    if (textareaRef.current) {
+      updateAutocomplete(bulkText, textareaRef.current.selectionStart);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const rect = textarea.getBoundingClientRect();
+    const padding = 12; // p-3 is 12px
+    const lineHeight = 18; // line-height of text-[11px] leading-relaxed is ~18px
+    const charWidth = 6.6; // JetBrains Mono character width at 11px
+
+    const x = e.clientX - rect.left - padding + textarea.scrollLeft;
+    const y = e.clientY - rect.top - padding + textarea.scrollTop;
+
+    const lineIdx = Math.floor(y / lineHeight);
+    
+    const lines = bulkText.split('\n');
+    if (lineIdx < 0 || lineIdx >= lines.length) {
+      setHoveredError(null);
+      return;
+    }
+
+    const line = lines[lineIdx];
+    const trimmed = line.trim();
+    
+    // Check if line is empty or comment
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+      setHoveredError(null);
+      return;
+    }
+
+    // Identify words on this line
+    const wordsWithRanges: { text: string; start: number; end: number; wordIndex: number }[] = [];
+    let currentWord = '';
+    let wordStart = 0;
+    let wordCount = 0;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (/\s/.test(char)) {
+        if (currentWord) {
+          wordsWithRanges.push({ text: currentWord, start: wordStart, end: i, wordIndex: wordCount });
+          currentWord = '';
+          wordCount++;
+        }
+      } else {
+        if (!currentWord) {
+          wordStart = i;
+        }
+        currentWord += char;
+      }
+    }
+    if (currentWord) {
+      wordsWithRanges.push({ text: currentWord, start: wordStart, end: line.length, wordIndex: wordCount });
+    }
+
+    const totalWords = wordsWithRanges.length;
+    const charIdx = Math.floor(x / charWidth);
+    
+    // Check if mouse is hovering over a word
+    const hoveredWord = wordsWithRanges.find(w => charIdx >= w.start && charIdx <= w.end);
+    if (!hoveredWord) {
+      setHoveredError(null);
+      return;
+    }
+
+    let errorDetails: { title: string; message: string; formalRef: string } | null = null;
+
+    if (totalWords < 5) {
+      errorDetails = {
+        title: "Incomplete Transition Tuple",
+        message: `This rule has only ${totalWords} column(s). A valid Turing Machine rule must specify exactly 5 parameters to define a full transition.`,
+        formalRef: "TM Formal Definition: The transition function is mathematically defined as \u03B4: Q \u00D7 \u0393 \u2192 Q \u00D7 \u0393 \u00D7 {L, R, S}.\nIt maps (currentState, readSymbol) to (writeSymbol, moveDirection, nextState). All 5 components must be declared."
+      };
+    } else {
+      const moveDirection = wordsWithRanges[3]?.text || '';
+      const dir = moveDirection.toUpperCase();
+
+      if (hoveredWord.wordIndex === 3 && dir !== 'L' && dir !== 'R' && dir !== 'S') {
+        errorDetails = {
+          title: "Invalid Head Shift Direction",
+          message: `"${moveDirection}" is not a valid head transition direction. It must be L, R, or S (case-insensitive).`,
+          formalRef: "TM Formal Definition: The shift direction 'D' is restricted to the set {L, R, S}.\n- 'L' (Left): moves head left\n- 'R' (Right): moves head right\n- 'S' (Stationary): maintains head position on the current cell."
+        };
+      } else if (hoveredWord.wordIndex >= 5) {
+        errorDetails = {
+          title: "Extraneous Transition Column",
+          message: `Too many columns. Expected exactly 5 columns, but found extra element "${hoveredWord.text}".`,
+          formalRef: "TM Formal Definition: The transition function \u03B4 is a function from Q \u00D7 \u0393 mapping to a single output triple in Q \u00D7 \u0393 \u00D7 {L, R, S}. Additional parameters are mathematically undefined."
+        };
+      }
+    }
+
+    if (errorDetails) {
+      setHoveredError({
+        ...errorDetails,
+        x: e.clientX,
+        y: e.clientY,
+        line: lineIdx + 1,
+      });
+    } else {
+      setHoveredError(null);
+    }
+  };
+
+  const handleScroll = () => {
+    if (textareaRef.current) {
+      const scrollTop = textareaRef.current.scrollTop;
+      const scrollLeft = textareaRef.current.scrollLeft;
+      
+      setEditorScroll({ scrollTop, scrollLeft });
+      
+      if (preRef.current) {
+        preRef.current.scrollTop = scrollTop;
+        preRef.current.scrollLeft = scrollLeft;
+      }
+      if (lineNumbersRef.current) {
+        lineNumbersRef.current.scrollTop = scrollTop;
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (autocomplete && autocomplete.suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAutocomplete(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            activeIndex: (prev.activeIndex + 1) % prev.suggestions.length
+          };
+        });
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAutocomplete(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            activeIndex: (prev.activeIndex - 1 + prev.suggestions.length) % prev.suggestions.length
+          };
+        });
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const selected = autocomplete.suggestions[autocomplete.activeIndex];
+        applySuggestion(selected);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAutocomplete(null);
+        return;
+      }
+    }
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const spaces = '    '; // 4 spaces
+      
+      const newValue = text.substring(0, start) + spaces + text.substring(end);
+      setBulkText(newValue);
+      
+      const { errors } = textToRules(newValue);
+      setBulkErrors(errors);
+      
+      setTimeout(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + spaces.length;
+      }, 0);
+    }
+  };
+
+  const popupPosition = React.useMemo(() => {
+    if (!autocomplete || !textareaRef.current) return { top: 0, left: 0, visible: false, showAbove: false };
+    
+    const container = textareaRef.current.parentElement;
+    if (!container) return { top: 0, left: 0, visible: false, showAbove: false };
+    
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    const charWidth = 6.6;
+    const lineHeight = 18;
+    const padding = 12; // p-3 is 12px
+    
+    let left = autocomplete.columnIndex * charWidth + padding - editorScroll.scrollLeft;
+    let top = (autocomplete.lineIndex + 1) * lineHeight + padding - editorScroll.scrollTop;
+    
+    const popupWidth = 150;
+    const popupHeight = Math.min(autocomplete.suggestions.length * 24 + 8, 144);
+    
+    if (left + popupWidth > containerWidth - 10) {
+      left = Math.max(10, containerWidth - popupWidth - 10);
+    }
+    
+    let showAbove = false;
+    if (top + popupHeight > containerHeight - 10) {
+      const topAbove = autocomplete.lineIndex * lineHeight + padding - editorScroll.scrollTop - popupHeight - 4;
+      if (topAbove > 5) {
+        top = topAbove;
+        showAbove = true;
+      }
+    }
+    
+    const cursorY = autocomplete.lineIndex * lineHeight + padding;
+    const isOutOfView = cursorY < editorScroll.scrollTop || cursorY > editorScroll.scrollTop + containerHeight - lineHeight;
+    
+    return {
+      left,
+      top,
+      visible: !isOutOfView,
+      showAbove,
+    };
+  }, [autocomplete, editorScroll]);
+
+  const highlightRulesText = (text: string) => {
+    const lines = text.split('\n');
+    return lines.map((line, lineIdx) => {
+      const isLast = lineIdx === lines.length - 1;
+      const content = line === '' ? ' ' : line;
+      
+      const diff = getLineDiffState(line, rulesAtLastRun);
+      let lineClass = "w-full block";
+      if (diff === 'added') {
+        lineClass = "w-full block bg-emerald-500/[0.06]";
+      } else if (diff === 'modified') {
+        lineClass = "w-full block bg-blue-500/[0.06]";
+      }
+
+      // Handle comments
+      if (line.trim().startsWith('#') || line.trim().startsWith('//')) {
+        return (
+          <div key={lineIdx} className={`${lineClass} text-text-muted/60 italic`}>
+            {content}
+          </div>
+        );
+      }
+
+      const nonSpaceParts = line.trim().split(/\s+/).filter(Boolean);
+      const totalWords = nonSpaceParts.length;
+
+      const parts = line.split(/(\s+)/);
+      let wordCount = 0;
+      const tokens: React.ReactNode[] = [];
+
+      parts.forEach((part, partIdx) => {
+        if (!part) return;
+
+        if (/^\s+$/.test(part)) {
+          tokens.push(<span key={partIdx}>{part}</span>);
+        } else {
+          wordCount++;
+          let className = "text-text-primary";
+          let isError = false;
+
+          if (wordCount === 1) {
+            className = "text-blue-400 font-semibold";
+          } else if (wordCount === 2) {
+            className = "text-amber-400";
+          } else if (wordCount === 3) {
+            className = "text-yellow-400";
+          } else if (wordCount === 4) {
+            className = "text-purple-400 font-bold";
+            if (part !== 'L' && part !== 'R' && part !== 'S' && part !== 'l' && part !== 'r' && part !== 's') {
+              isError = true;
+            }
+          } else if (wordCount === 5) {
+            if (part === 'halt' || part === 'reject') {
+              className = "text-red-400 font-bold";
+            } else if (part === 'accept') {
+              className = "text-emerald-400 font-bold";
+            } else {
+              className = "text-emerald-400 font-bold";
+            }
+          } else {
+            isError = true;
+          }
+
+          if (totalWords < 5) {
+            isError = true;
+          }
+
+          if (isError) {
+            className += " underline decoration-red-500 decoration-wavy decoration-1";
+          }
+
+          tokens.push(
+            <span key={partIdx} className={className}>
+              {part}
+            </span>
+          );
+        }
+      });
+
+      return (
+        <div key={lineIdx} className={lineClass}>
+          {tokens}
+        </div>
+      );
+    });
+  };
 
   // Find the currently active executing rule based on the TM state
   const executingRuleId = React.useMemo(() => {
@@ -519,6 +1196,33 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
     playSubtleClick();
   };
 
+  const handleInsertPattern = (patternContent: string, mode: 'replace' | 'append') => {
+    let newText = '';
+    if (mode === 'replace') {
+      newText = patternContent;
+    } else {
+      if (bulkText && !bulkText.endsWith('\n')) {
+        newText = bulkText + '\n\n' + patternContent;
+      } else if (bulkText) {
+        newText = bulkText + '\n' + patternContent;
+      } else {
+        newText = patternContent;
+      }
+    }
+    setBulkText(newText);
+    const { errors } = textToRules(newText);
+    setBulkErrors(errors);
+    
+    playSubtleClick();
+    
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = newText.length;
+      }
+    }, 50);
+  };
+
   const removeRule = (id: string) => {
     setLocalRules(prev => prev.filter(r => r.id !== id));
   };
@@ -578,6 +1282,12 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
     setBulkText(val);
     const { errors } = textToRules(val);
     setBulkErrors(errors);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        updateAutocomplete(val, textareaRef.current.selectionStart);
+      }
+    }, 0);
   };
 
   const saveRules = () => {
@@ -613,8 +1323,39 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
   return (
     <div className="flex flex-col flex-1 overflow-hidden font-mono min-w-0 h-full">
       <div className="p-3 bg-bg-panel border-b border-border-main flex justify-between items-center shrink-0 min-w-0 overflow-x-auto no-scrollbar gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted font-sans shrink-0">Instructions / Rules</span>
+        <div className="flex items-center gap-2 shrink-0 min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted font-sans shrink-0">Instructions / Rules</span>
+          {diffStats.total > 0 && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse font-sans" title={`${diffStats.added} added, ${diffStats.modified} modified since last run`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <span>{diffStats.total} changes</span>
+            </span>
+          )}
+        </div>
         <div className="flex gap-2 font-sans shrink-0">
+          {/* Undo/Redo Controls */}
+          <div className="flex bg-bg-surface/50 border border-border-main rounded items-center shrink-0">
+            <button
+              onClick={undoEdit}
+              disabled={editHistoryIndex <= 0 || isRunning}
+              className="p-1 hover:bg-bg-element disabled:opacity-30 rounded-l text-text-secondary transition-colors"
+              title="Undo Edit"
+              type="button"
+            >
+              <Undo2 size={11} />
+            </button>
+            <div className="w-px h-3 bg-border-main" />
+            <button
+              onClick={redoEdit}
+              disabled={editHistoryIndex >= editHistory.length - 1 || isRunning}
+              className="p-1 hover:bg-bg-element disabled:opacity-30 rounded-r text-text-secondary transition-colors"
+              title="Redo Edit"
+              type="button"
+            >
+              <Redo2 size={11} />
+            </button>
+          </div>
+
           <button 
             type="button"
             onClick={() => onOpenStudio?.()} 
@@ -817,7 +1558,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
 
       {isBulkMode ? (
         <div className="flex-1 flex flex-col p-3 overflow-hidden gap-2 bg-bg-surface/50 h-full">
-          <div className="flex justify-between items-center bg-[#11141a]/95 p-2.5 rounded border border-border-main text-[10px] shrink-0 leading-normal">
+          <div className="flex justify-between items-start bg-[#11141a]/95 p-2.5 rounded border border-border-main text-[10px] shrink-0 leading-normal">
             <div className="text-text-secondary">
               <span className="font-bold text-[#3b82f6]">📝 Bulk Multi-line Rule Editor</span>
               <p className="text-text-muted mt-0.5">
@@ -826,17 +1567,266 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
               <p className="text-text-muted mt-0.5 leading-relaxed">
                 Separated by tabs, commas or any spaces. Blanks are represented with <code className="text-amber-400 font-bold border border-amber-500/20 px-0.5 py-0.2 rounded font-mono">_</code>. Lines starting with <code className="text-text-faint">#</code> are comments.
               </p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 pt-1.5 border-t border-border-main/30 text-[9px] font-sans">
+                <span className="text-text-faint font-semibold uppercase tracking-wider">Changes since last run:</span>
+                <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> <span className="text-emerald-400 font-semibold">New Rule</span></span>
+                <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> <span className="text-blue-400 font-semibold">Modified Rule</span></span>
+                {rulesAtLastRun && rulesAtLastRun.length > 0 ? (
+                  <span className="text-text-muted/60 ml-auto italic">Tracking live differences</span>
+                ) : (
+                  <span className="text-text-muted/50 ml-auto italic">No run baseline set (click run to track changes)</span>
+                )}
+              </div>
+            </div>
+
+            {/* Pattern Injector Dropdown */}
+            <div className="relative shrink-0 ml-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPatternsOpen(!isPatternsOpen);
+                  playSubtleClick();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1b222d] hover:bg-[#232d3c] border border-border-main hover:border-[#4d5c6e] text-text-primary hover:text-white rounded font-medium transition-all shadow-md active:scale-95 text-[10px]"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-primary-base animate-pulse" />
+                <span>Insert Pattern</span>
+                <ChevronDown className={`w-3 h-3 text-text-muted transition-transform duration-200 ${isPatternsOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isPatternsOpen && (
+                <div className="fixed inset-0 z-30" onClick={() => setIsPatternsOpen(false)} />
+              )}
+
+              <AnimatePresence>
+                {isPatternsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                    className="absolute right-0 mt-1.5 w-80 max-h-[380px] overflow-y-auto rounded-lg border border-border-main bg-[#11141a]/95 backdrop-blur-md shadow-2xl z-40 py-1 text-text-primary flex flex-col no-scrollbar"
+                  >
+                    <div className="px-3 py-2 border-b border-border-main/50 bg-[#090c10]/80 sticky top-0 backdrop-blur-md z-10 flex items-center justify-between">
+                      <span className="font-bold text-[10px] text-text-muted uppercase tracking-wider">
+                        Common TM Patterns
+                      </span>
+                      <span className="text-[9px] bg-[#3b82f6]/10 text-[#3b82f6] px-1.5 py-0.5 rounded font-medium border border-[#3b82f6]/20">
+                        {RULE_PATTERNS.length} available
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col">
+                      {RULE_PATTERNS.map((pattern, idx) => (
+                        <div
+                          key={idx}
+                          className="px-3 py-2.5 border-b border-border-main/40 hover:bg-[#1a212d]/60 transition-colors flex flex-col gap-1.5 group"
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-[11px] text-[#3b82f6] group-hover:text-[#60a5fa] transition-colors">
+                              {pattern.name}
+                            </span>
+                          </div>
+                          <p className="text-[9.5px] text-text-muted leading-relaxed">
+                            {pattern.description}
+                          </p>
+                          <div className="flex gap-1.5 mt-1 justify-end opacity-80 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleInsertPattern(pattern.content, 'replace');
+                                setIsPatternsOpen(false);
+                              }}
+                              className="px-2 py-1 rounded text-[9px] bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium transition-all border border-red-500/20 hover:border-red-500/40"
+                              title="Overwrite the entire editor text with this pattern"
+                            >
+                              Replace All
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleInsertPattern(pattern.content, 'append');
+                                setIsPatternsOpen(false);
+                              }}
+                              className="px-2 py-1 rounded text-[9px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-medium transition-all border border-emerald-500/20 hover:border-emerald-500/40"
+                              title="Append this pattern's rules to the end of the current code"
+                            >
+                              Append to End
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 relative">
-            <textarea
-              className="w-full h-full bg-[#0d1117] text-text-primary border border-border-main rounded-lg p-3 font-mono text-[11px] leading-relaxed resize-none h-full outline-none focus:border-[#4d5c6e] focus:ring-1 focus:ring-[#4d5c6e] hover:border-text-faint/30 transition-all font-semibold"
-              value={bulkText}
-              onChange={(e) => handleTextChange(e.target.value)}
-              disabled={isRunning}
-              placeholder={`# Add custom Turing rules here:\n# State   Read  Write  Dir  NextState\nq0        0     1      R    q0\nq0        1     0      L    q1\nq1        _     A      S    halt`}
-            />
+          <div className="flex-1 min-h-0 relative bg-[#0d1117] border border-border-main rounded-lg flex overflow-hidden outline-none focus-within:border-[#4d5c6e] focus-within:ring-1 focus-within:ring-[#4d5c6e] hover:border-text-faint/30 transition-all h-full">
+            {/* Line Numbers Column */}
+            <div
+              ref={lineNumbersRef}
+              className="w-10 select-none text-right text-text-faint/40 font-mono text-[11px] leading-relaxed py-3 bg-[#090d13] border-r border-border-main/50 overflow-hidden shrink-0 no-scrollbar flex flex-col"
+              style={{
+                fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
+                margin: 0,
+              }}
+            >
+              {bulkText.split('\n').map((line, idx) => {
+                const diff = getLineDiffState(line, rulesAtLastRun);
+                let textClass = "text-text-faint/30 pr-2";
+                
+                if (diff === 'added') {
+                  textClass = "text-emerald-400 font-bold bg-emerald-500/10 border-r-[3px] border-emerald-500 pr-1.5";
+                } else if (diff === 'modified') {
+                  textClass = "text-blue-400 font-bold bg-blue-500/10 border-r-[3px] border-blue-500 pr-1.5";
+                }
+                
+                return (
+                  <div 
+                    key={idx} 
+                    className={`w-full block h-[18px] flex items-center justify-end ${textClass}`}
+                    title={diff !== 'unchanged' ? `Rule was ${diff} since last run` : undefined}
+                  >
+                    {idx + 1}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Editor Workspace */}
+            <div className="flex-1 relative overflow-hidden h-full">
+              {/* Highlighted text layer underneath */}
+              <pre
+                ref={preRef}
+                className="absolute inset-0 w-full h-full p-3 font-mono text-[11px] leading-relaxed pointer-events-none overflow-auto whitespace-pre text-text-primary select-none bg-transparent no-scrollbar"
+                style={{
+                  fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
+                  margin: 0,
+                  border: 'none',
+                }}
+              >
+                <code>{highlightRulesText(bulkText)}</code>
+              </pre>
+
+              {/* Input text layer on top */}
+              <textarea
+                ref={textareaRef}
+                onScroll={handleScroll}
+                onKeyDown={handleKeyDown}
+                onKeyUp={handleSelectionOrMovement}
+                onSelect={handleSelectionOrMovement}
+                onFocus={handleSelectionOrMovement}
+                onClick={handleSelectionOrMovement}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={() => setHoveredError(null)}
+                onBlur={() => setTimeout(() => setAutocomplete(null), 150)}
+                className="absolute inset-0 w-full h-full bg-transparent p-3 font-mono text-[11px] leading-relaxed resize-none outline-none z-10 whitespace-pre overflow-auto border-0 focus:ring-0"
+                value={bulkText}
+                onChange={(e) => handleTextChange(e.target.value)}
+                disabled={isRunning}
+                placeholder={`# Add custom Turing rules here:\n# State   Read  Write  Dir  NextState\nq0        0     1      R    q0\nq0        1     0      L    q1\nq1        _     A      S    halt`}
+                style={{
+                  fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
+                  margin: 0,
+                  border: 'none',
+                  outline: 'none',
+                  boxShadow: 'none',
+                  color: 'transparent',
+                  WebkitTextFillColor: 'transparent',
+                  caretColor: 'var(--text-primary, #ffffff)',
+                }}
+                spellCheck={false}
+              />
+
+              {/* Autocomplete popup */}
+              {autocomplete && popupPosition.visible && (
+                <div 
+                  className="absolute z-20 w-[155px] max-h-36 overflow-y-auto rounded-md border border-border-main bg-[#0d1117]/95 backdrop-blur-md shadow-2xl py-1 font-mono text-[10px] select-none flex flex-col no-scrollbar"
+                  style={{ 
+                    left: `${popupPosition.left}px`, 
+                    top: `${popupPosition.top}px`,
+                  }}
+                >
+                  {autocomplete.suggestions.map((item, idx) => {
+                    const isSelected = idx === autocomplete.activeIndex;
+                    const isSymbol = autocomplete.tokenIndex === 1 || autocomplete.tokenIndex === 2;
+                    const alias = isSymbol ? symbolAliases[item] : undefined;
+                    const itemColor = !isSymbol && activeScenario?.stateColors?.[item];
+                    
+                    return (
+                      <div
+                        key={item}
+                        onMouseDown={(e) => {
+                          e.preventDefault(); // Prevents textarea blur before selection triggers
+                          applySuggestion(item);
+                        }}
+                        className={`cursor-pointer px-2 py-1 flex items-center justify-between transition-colors ${
+                          isSelected 
+                            ? 'bg-primary-base/20 text-primary-base font-bold' 
+                            : 'text-text-primary hover:bg-[#1a212d]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {itemColor && (
+                            <span 
+                              className="w-1.5 h-1.5 rounded-full border border-black/40 shrink-0" 
+                              style={{ backgroundColor: itemColor }} 
+                            />
+                          )}
+                          <span className="truncate">{item === '_' ? 'Blank (_)' : item}</span>
+                        </div>
+                        {isSymbol && alias && (
+                          <span className="text-[8px] text-text-muted italic ml-1 select-none">({alias})</span>
+                        )}
+                        {!isSymbol && (item === 'halt' || item === 'accept' || item === 'reject') && (
+                          <span className="text-[8px] text-red-400 font-sans font-bold uppercase tracking-wider ml-1 select-none">exit</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Precise Syntax Error Tooltip */}
+              <AnimatePresence>
+                {hoveredError && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.1 }}
+                    className="fixed z-50 w-[340px] rounded-lg border border-red-500/30 bg-[#0d1117]/95 backdrop-blur-md shadow-2xl p-3.5 text-xs select-none pointer-events-none flex flex-col gap-2 text-text-primary"
+                    style={{
+                      left: `${Math.min(window.innerWidth - 360, hoveredError.x + 16)}px`,
+                      top: `${Math.min(window.innerHeight - 180, hoveredError.y + 16)}px`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 pb-1.5 border-b border-border-main/50">
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span className="font-semibold text-red-400 text-[13px] tracking-tight">{hoveredError.title}</span>
+                      <span className="ml-auto text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded border border-red-500/20 font-mono font-bold">
+                        Line {hoveredError.line}
+                      </span>
+                    </div>
+
+                    <p className="text-text-secondary leading-relaxed text-[11px]">
+                      {hoveredError.message}
+                    </p>
+
+                    <div className="mt-1 bg-black/30 border border-border-main/30 rounded p-2 flex flex-col gap-1">
+                      <span className="text-[9px] text-primary-base font-bold uppercase tracking-wider">
+                        TM Formal Definition
+                      </span>
+                      <div className="font-mono text-[9.5px] text-text-muted leading-relaxed whitespace-pre-line">
+                        {hoveredError.formalRef}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
           {/* Action and Error HUD for Bulk Edit */}
@@ -1050,6 +2040,25 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                   const isHighlighted = highlightedRuleId === rule.id;
                   const isHighlightedByState = highlightedState && (rule.currentState.trim() === highlightedState || rule.nextState.trim() === highlightedState);
                   
+                  const diffState = (() => {
+                    if (!rulesAtLastRun) return 'unchanged';
+                    const matching = rulesAtLastRun.find(r => r.id === rule.id);
+                    if (!matching) {
+                      const matchingByKey = rulesAtLastRun.find(
+                        r => r.currentState === rule.currentState && r.readSymbol === rule.readSymbol
+                      );
+                      return matchingByKey ? 'unchanged' : 'added';
+                    }
+                    const isChanged = 
+                      matching.currentState !== rule.currentState ||
+                      matching.readSymbol !== rule.readSymbol ||
+                      matching.writeSymbol !== rule.writeSymbol ||
+                      matching.moveDirection !== rule.moveDirection ||
+                      matching.nextState !== rule.nextState ||
+                      matching.enabled !== rule.enabled;
+                    return isChanged ? 'modified' : 'unchanged';
+                  })();
+
                   const getStateClass = (s: string) => {
                     const isInitial = s === activeScenario?.initialState || s === 'q0';
                     const lower = s.toLowerCase();
@@ -1105,7 +2114,11 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                               ? 'bg-amber-500/25 ring-1 ring-amber-500/60 border-l-2 border-amber-500 shadow-md font-semibold scale-[1.01] z-10'
                               : isExecutingRow 
                                 ? 'animate-fade-in-highlight border-l-4 border-primary-base shadow-lg shadow-primary-base/35 font-extrabold scale-[1.015] z-10 duration-150 ring-1 ring-primary-base/40' 
-                                : (isLastRule ? 'bg-primary-base/5 shadow-sm' : 'hover:bg-bg-panel/40')
+                                : diffState === 'added'
+                                  ? 'bg-emerald-500/[0.03] border-l-2 border-emerald-500 hover:bg-emerald-500/[0.08]'
+                                  : diffState === 'modified'
+                                    ? 'bg-blue-500/[0.03] border-l-2 border-blue-500 hover:bg-blue-500/[0.08]'
+                                    : (isLastRule ? 'bg-primary-base/5 shadow-sm' : 'hover:bg-bg-panel/40')
                       }`}
                     >
                       <td className="py-1.5 text-center leading-none align-middle">
@@ -1168,7 +2181,15 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ onOpenStudio }) => {
                             />
                           </span>
                         ) : null}
-                        <span className={isExecutingRow ? 'text-primary-base font-extrabold pl-2.5' : ''}>{index + 1}</span>
+                        <span className={
+                          isExecutingRow 
+                            ? 'text-primary-base font-extrabold pl-2.5' 
+                            : diffState === 'added'
+                              ? 'text-emerald-400 font-bold'
+                              : diffState === 'modified'
+                                ? 'text-blue-400 font-bold'
+                                : ''
+                        }>{index + 1}</span>
                       </td>
                       <td className="py-1.5 pl-2 pr-1 opacity-100 transition-opacity" style={{ opacity: rule.enabled === false ? 0.4 : 1 }}>
                         <AutocompleteInput 

@@ -5,6 +5,7 @@ import { TMScenario } from '../types/tm';
 export interface ScenariosState {
   activeScenarios: TMScenario[];
   customScenarios: TMScenario[];
+  favoriteScenarioIds: string[];
   scenarioProgress: Record<string, 'Not Started' | 'In-Progress' | 'Completed'>;
   addActiveScenario: (scenario: TMScenario) => void;
   removeActiveScenario: (id: string) => void;
@@ -12,6 +13,7 @@ export interface ScenariosState {
   updateScenarioProgress: (id: string, progress: 'Not Started' | 'In-Progress' | 'Completed') => void;
   updateScenario: (scenario: TMScenario) => void;
   addCustomScenario: (scenario: TMScenario) => void;
+  toggleFavorite: (id: string) => void;
 }
 
 export const useScenariosStore = create<ScenariosState>()(
@@ -19,6 +21,7 @@ export const useScenariosStore = create<ScenariosState>()(
     (set) => ({
       activeScenarios: [],
       customScenarios: [],
+      favoriteScenarioIds: [],
       scenarioProgress: {},
       addActiveScenario: (scenario) => set((state) => {
         if (state.activeScenarios.some(s => s.id === scenario.id)) {
@@ -41,7 +44,14 @@ export const useScenariosStore = create<ScenariosState>()(
       })),
       addCustomScenario: (scenario) => set((state) => ({
         customScenarios: [...state.customScenarios, scenario]
-      }))
+      })),
+      toggleFavorite: (id) => set((state) => {
+        const isFav = state.favoriteScenarioIds.includes(id);
+        const nextFavs = isFav 
+          ? state.favoriteScenarioIds.filter(favId => favId !== id)
+          : [...state.favoriteScenarioIds, id];
+        return { favoriteScenarioIds: nextFavs };
+      })
     }),
     {
       name: 'turing-active-scenarios',

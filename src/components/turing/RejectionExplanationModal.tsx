@@ -43,6 +43,19 @@ export const RejectionExplanationModal: React.FC<RejectionExplanationModalProps>
 
   const soundEnabled = useThemeStore(state => state.soundEnabled);
 
+  // Close modal when Esc is pressed
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   // States for advanced automated fix and retry logic
   const [fixStatus, setFixStatus] = React.useState<'idle' | 'validating' | 'success' | 'persisted_error'>('idle');
   const [persistentErrorMessage, setPersistentErrorMessage] = React.useState<string | null>(null);

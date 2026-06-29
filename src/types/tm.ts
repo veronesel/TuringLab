@@ -23,6 +23,8 @@ export interface TMScenario {
   stateColors?: Record<string, string>;
   stateLabels?: Record<string, string>;
   category?: string;
+  favorite?: boolean;
+  tags?: string[];
   upfrontTestResult?: {
     status: 'accepted' | 'rejected' | 'halted' | 'timeout';
     stepsExecuted: number;

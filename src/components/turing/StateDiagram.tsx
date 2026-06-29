@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useCallback } from 'react';
 import { ReactFlow, Controls, ControlButton, Background, Node, Edge, MarkerType, useReactFlow, ReactFlowProvider, NodeChange, applyNodeChanges, MiniMap, Connection, getNodesBounds, getViewportForBounds, Panel, useOnViewportChange } from '@xyflow/react';
 import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide } from 'd3-force';
 import { motion } from 'motion/react';
-import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, MousePointerClick, Crosshair, Grid, CheckCircle2, XCircle, AlertTriangle, Info, Wand2 } from 'lucide-react';
+import { Save, ChevronDown, Trash2, Camera, X, HelpCircle, BrainCircuit, Maximize, Map as MapIcon, Flame, List, ArrowRightLeft, LayoutGrid, Undo2, Redo2, Maximize2, Minimize2, ArrowLeft, MousePointerClick, Crosshair, Grid, CheckCircle2, XCircle, AlertTriangle, Info, Wand2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import '@xyflow/react/dist/style.css';
 import { useTMStore } from '../../store/tmStore';
@@ -537,6 +537,38 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
   const deleteState = useTMStore(state => state.deleteState);
   const setInitialState = useTMStore(state => state.setInitialState);
   const toggleAcceptState = useTMStore(state => state.toggleAcceptState);
+
+  const undoEdit = useTMStore(state => state.undoEdit);
+  const redoEdit = useTMStore(state => state.redoEdit);
+  const editHistoryIndex = useTMStore(state => state.editHistoryIndex);
+  const editHistory = useTMStore(state => state.editHistory);
+
+  const [isDiagramFullscreen, setIsDiagramFullscreen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement === containerRef.current) {
+        setIsDiagramFullscreen(true);
+      } else {
+        setIsDiagramFullscreen(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleDiagramFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(err => {
+        console.error("Failed to enter diagram fullscreen", err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   const [heatmapMode, setHeatmapMode] = React.useState(false);
   const [zoomLevel, setZoomLevel] = React.useState(100);
@@ -1450,9 +1482,15 @@ const StateDiagramInternal: React.FC<StateDiagramProps> = ({ onExplainLogic }) =
                 
                 <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
                 
+                <IconButton icon={Undo2} tooltip="Undo Edit" disabled={editHistoryIndex <= 0 || isRunning} onClick={undoEdit} />
+                <IconButton icon={Redo2} tooltip="Redo Edit" disabled={editHistoryIndex >= editHistory.length - 1 || isRunning} onClick={redoEdit} />
+                
+                <div className="h-px w-full bg-border-main my-0.5 shrink-0"></div>
+
                 <IconButton icon={ArrowRightLeft} isActive={showArrows} tooltip={`Arrows: ${showArrows ? 'ON' : 'OFF'}`} onClick={() => setShowArrows(!showArrows)} />
                 <IconButton icon={Camera} tooltip="High-Res Export (PNG)" onClick={handleSnapshot} />
-                <IconButton icon={Undo2} tooltip="Step Back" disabled={historyIndex <= 0 || isRunning} onClick={undo} />
+                <IconButton icon={isDiagramFullscreen ? Minimize2 : Maximize2} tooltip={isDiagramFullscreen ? "Exit Diagram Fullscreen" : "Fullscreen Diagram"} onClick={toggleDiagramFullscreen} />
+                <IconButton icon={ArrowLeft} tooltip="Step Back (Sim)" disabled={historyIndex <= 0 || isRunning} onClick={undo} />
                 
                 {/* Checkpoint Dropdown */}
                 <div className="relative w-full shrink-0">

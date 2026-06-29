@@ -18,6 +18,7 @@ import { ShortcutsModal } from './components/turing/ShortcutsModal';
 import { SettingsModal } from './components/turing/SettingsModal';
 import { SymbolAliasesPanel } from './components/turing/SymbolAliasesPanel';
 import { FloatingWindow } from './components/turing/FloatingWindow';
+import { AiCopilotPanel } from './components/turing/AiCopilotPanel';
 import { RejectionExplanationModal } from './components/turing/RejectionExplanationModal';
 import { Settings2, HelpCircle, BrainCircuit, Loader2, X, Moon, Sun, LayoutDashboard, Keyboard, GripHorizontal, GripVertical, RotateCcw, Download, Upload, Tags, FileText, CheckCircle2, Maximize, Minimize, Link, Table, Undo2, Redo2, CopyPlus, Volume2, VolumeX, BookOpen, ChevronRight } from 'lucide-react';
 import { TourOverlay } from './components/turing/TourOverlay';
@@ -106,7 +107,7 @@ export default function App() {
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'rules' | 'stats' | 'debugger'>('rules');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'rules' | 'stats' | 'debugger' | 'ai'>('rules');
   
   const [autosavePrompt, setAutosavePrompt] = useState<{ timestamp: number; data: any } | null>(null);
 
@@ -570,6 +571,16 @@ export default function App() {
       } else if (e.key.toLowerCase() === 'b') {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('toggle-sidebar'));
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          useTMStore.getState().redoEdit();
+        } else {
+          useTMStore.getState().undoEdit();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        useTMStore.getState().redoEdit();
       }
     };
 
@@ -1027,6 +1038,19 @@ export default function App() {
                         <FileText size={12} />
                         <span>Log</span>
                       </button>
+
+                      <button
+                        onClick={() => setActiveSidebarTab('ai')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                          activeSidebarTab === 'ai'
+                            ? 'bg-primary-base text-bg-base shadow-sm font-extrabold'
+                            : 'text-text-secondary hover:bg-bg-element hover:text-text-primary'
+                        }`}
+                        title="Interactive AI Turing Machine Assistant & Copilot"
+                      >
+                        <BrainCircuit size={12} />
+                        <span>Copilot</span>
+                      </button>
                     </div>
 
                     {/* Tab Panels Container */}
@@ -1073,6 +1097,12 @@ export default function App() {
                               <p className="text-[10px] font-mono">Log Panel is detached</p>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {activeSidebarTab === 'ai' && (
+                        <div className="w-full h-full min-h-0 min-w-0 flex flex-col">
+                          <AiCopilotPanel />
                         </div>
                       )}
                     </div>

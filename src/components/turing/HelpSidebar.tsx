@@ -68,6 +68,18 @@ export const HelpSidebar: React.FC<HelpSidebarProps> = ({ isOpen, setIsOpen }) =
     };
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, setIsOpen]);
+
   if (!isOpen) {
     return null;
   }
@@ -247,9 +259,9 @@ export const HelpSidebar: React.FC<HelpSidebarProps> = ({ isOpen, setIsOpen }) =
                     R
                   </div>
                   <div>
-                    <span className="font-bold text-[#f0f6fc] text-[11px] block">Right Panel &mdash; Transition Column Editor</span>
+                    <span className="font-bold text-[#f0f6fc] text-[11px] block">Right Panel &mdash; Multifunction Sidebar</span>
                     <p className="text-[#8b949e] leading-relaxed text-[10.5px] mt-0.5">
-                      Add, delete, or fine-tune explicit transitions. Highlights overlaps and unused states dynamically. Toggles the advanced full-screen **Rule Workshop Studio** with algebraic builders.
+                      Contains several tabs: **Rules** for direct cell transitions; **Stats** for hardware charts; **Log** for tracing head state coordinates; and **Copilot** for real-time AI design assistance, live actions, and an automated test suite runner.
                     </p>
                   </div>
                 </div>
@@ -555,34 +567,68 @@ export const HelpSidebar: React.FC<HelpSidebarProps> = ({ isOpen, setIsOpen }) =
               </div>
             </div>
 
-            {/* 8. Co-Design AI Genie */}
-            <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-3.5 space-y-3 shadow-sm">
+            {/* 8. Co-Design AI Genie & Copilot Suite */}
+            <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-3.5 space-y-4 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="w-6.5 h-6.5 rounded bg-purple-500/10 flex items-center justify-center border border-purple-500/20 shrink-0">
                   <Sparkles size={12} className="text-purple-400" />
                 </div>
                 <div>
-                  <h4 className="text-[11.5px] font-semibold text-[#f0f6fc] leading-tight">8. AI Genie Co-Designer Studio</h4>
-                  <span className="text-[8px] uppercase tracking-widest text-[#8b949e] block mt-0.5">INTELLIGENT RECONSTRUCTOR</span>
+                  <h4 className="text-[11.5px] font-semibold text-[#f0f6fc] leading-tight">8. AI Genie & Copilot Suite</h4>
+                  <span className="text-[8px] uppercase tracking-widest text-[#8b949e] block mt-0.5">INTELLIGENT RECONSTRUCTORS</span>
                 </div>
               </div>
               <p className="text-[10.5px] leading-relaxed text-[#8b949e]">
-                Converse dynamically with Gemini in real time inside our advanced window. Ask it to "Formulate state instructions to shift unary strings" and see rule configurations compile into your active IDE dynamically.
+                This IDE embeds a sophisticated, context-aware AI suite powered by Gemini to help you design, audit, and verify Turing algorithms:
               </p>
+
+              <div className="space-y-3 pl-1.5 border-l border-purple-500/30">
+                <div>
+                  <span className="text-[10.5px] font-bold text-[#f0f6fc] block">📍 AI Scenario Studio (Left Sidebar bottom)</span>
+                  <p className="text-[9.5px] text-[#8b949e] mt-0.5 leading-relaxed">
+                    Instantly construct complete scenarios from a prompt. Renders a side-by-side transition rules differential model, allowing you to preview and cherry-pick rules before applying them to the graph canvas.
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[10.5px] font-bold text-sky-400 block">📍 AI Copilot Chat (Right Sidebar &rarr; Copilot)</span>
+                  <p className="text-[9.5px] text-[#8b949e] mt-0.5 leading-relaxed">
+                    A real-time expert conversation partner! Ask questions about your current simulator states, request audits for infinite loops, or optimize rules. Best of all: it can inject **live commands** directly into your active simulator (updating rules, initial states, or tapes) with a single click.
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[10.5px] font-bold text-emerald-400 block">📍 Automated Test Suite (Right Sidebar &rarr; Copilot &rarr; Test Suite)</span>
+                  <p className="text-[9.5px] text-[#8b949e] mt-0.5 leading-relaxed">
+                    Verify compliance of your rules with ease! Click to generate complex, customized valid and boundary test cases. Click <strong className="text-[#f0f6fc]">Run All Tests</strong> to execute background sandboxed dry-runs and verify expected transition outcomes.
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[10.5px] font-bold text-amber-400 block">📍 Custom Preset Tags & Search</span>
+                  <p className="text-[9.5px] text-[#8b949e] mt-0.5 leading-relaxed">
+                    When saving a custom workspace (using "Save Custom Preset"), a rich modal prompts you for semantic metadata tags. These custom tags are integrated into the main Preset Library search index.
+                  </p>
+                </div>
+              </div>
 
               {/* Graphics Snippet: Genie Dialogue */}
               <div className="p-2.5 bg-[#0d1117] rounded border border-[#21262d] text-[10px] space-y-2 select-text">
                 <div className="flex items-start gap-1 text-[#8b949e]">
                   <span className="font-extrabold text-blue-400 uppercase text-[8px] bg-blue-500/10 px-1 rounded block shrink-0">USER REQUEST</span>
-                  <p className="italic text-[9.5px]">"Solve binary negation routines..."</p>
+                  <p className="italic text-[9.5px]">"Audit my active rules for infinite loops..."</p>
                 </div>
                 <div className="flex items-start gap-1 pb-1 border-t border-[#21262d]/50 pt-2 text-[#c9d1d9] font-mono text-[9px]">
                   <Sparkles size={11} className="text-purple-400 mt-0.5 shrink-0" />
                   <div>
-                    <span className="font-sans font-extrabold text-[#f0f6fc] uppercase text-[8px] block tracking-wide text-sky-400">GENIE COMPILER VECTOR:</span>
+                    <span className="font-sans font-extrabold text-[#f0f6fc] uppercase text-[8px] block tracking-wide text-sky-400">COPILOT AUDITOR FEEDBACK:</span>
                     <p className="text-[8.5px] mt-0.5 text-emerald-400 leading-normal">
-                      + Added: q0 [Read "0" &rarr; Write "1", Move R, NextState q_accept]
+                      &bull; State q0 has no halt transition. Injecting fix...
                     </p>
+                    <button className="mt-1.5 w-full bg-primary-base text-white text-[8px] font-bold py-0.5 px-1 rounded hover:bg-opacity-90 flex items-center justify-center gap-1 transition-colors">
+                      <Play size={8} fill="currentColor" />
+                      EXECUTE ACTION IN SIMULATOR
+                    </button>
                   </div>
                 </div>
               </div>

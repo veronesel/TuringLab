@@ -16,6 +16,18 @@ export function FloatingWindow({ id, title, children, onClose, defaultPosition =
   const [isMaximized, setIsMaximized] = useState(false);
   const dragControls = useDragControls();
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   return (
     <motion.div
       drag={!isMaximized}

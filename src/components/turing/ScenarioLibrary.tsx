@@ -5,6 +5,7 @@ import { useScenariosStore } from "../../store/scenariosStore";
 import { presetScenarios } from "../../data/scenarios";
 import { TMScenario } from "../../types/tm";
 import { AiScenarioStudio } from "./AiScenarioStudio";
+import { SaveScenarioModal } from "./SaveScenarioModal";
 import { AnimatePresence } from "motion/react";
 import {
   BrainCircuit,
@@ -24,7 +25,8 @@ import {
   CheckCircle2,
   Sparkles,
   X,
-  Eye
+  Eye,
+  Star
 } from "lucide-react";
 
 const parseExpectedOutcome = (desc: string) => {
@@ -73,6 +75,47 @@ const getExpectedColorInfo = (sc: TMScenario) => {
     dotClass: "bg-green-500",
     colorType: "green"
   };
+};
+
+export const getScenarioTags = (sc: TMScenario): string[] => {
+  if (sc.tags && sc.tags.length > 0) return sc.tags;
+  
+  // Default tags mapping for preset scenarios
+  const presetTagsMap: Record<string, string[]> = {
+    "binary-palindrome": ["palindrome", "binary", "language", "symmetric"],
+    "unary-addition": ["unary", "addition", "math", "arithmetic"],
+    "unary-add": ["unary", "addition", "math", "arithmetic"],
+    "binary-increment": ["binary", "increment", "math", "add-one"],
+    "binary-decrement": ["binary", "decrement", "math", "sub-one"],
+    "bit-inverter": ["basics", "logic", "not-gate", "binary"],
+    "copy-unary": ["unary", "copy", "utility"],
+    "shift-right": ["basics", "shift", "binary", "utility"],
+    "find-pattern": ["pattern", "search", "binary", "match"],
+    "clear-tape": ["basics", "clear", "utility"],
+    "duplicate-char": ["duplicate", "string", "manipulation"],
+    "binary-equal": ["binary", "equality", "comparison"],
+    "busy-beaver-4": ["beaver", "busy-beaver", "theoretical", "halting"],
+    "binary-to-unary": ["binary", "unary", "conversion"],
+    "find-middle": ["basics", "string", "middle", "utility"],
+    "swap-01": ["swap", "binary", "manipulation"],
+    "count-zeros": ["count", "binary", "unary", "utility"],
+    "move-tape": ["basics", "shift", "utility"],
+    "parity-check": ["parity", "binary", "check"],
+    "multiply-by-2": ["unary", "multiply", "doubling", "math"],
+    "inc-binary": ["binary", "increment", "math"],
+    "dec-binary": ["binary", "decrement", "math"],
+    "ones-complement": ["binary", "complement", "invert"],
+    "busy-beaver-3": ["beaver", "busy-beaver", "theoretical", "halting"],
+    "an-bn-cn": ["language", "recognition", "context-free"],
+    "reverse-string": ["reverse", "string", "manipulation", "utility"],
+    "copy-string": ["copy", "string", "manipulation", "utility"],
+    "find-char": ["search", "character", "find"],
+    "replace-char": ["replace", "string", "manipulation"],
+    "check-even-length": ["length", "parity", "check"],
+    "subtraction-unary": ["unary", "subtraction", "math"]
+  };
+
+  return presetTagsMap[sc.id] || ["turing", sc.category?.toLowerCase() || "utility"];
 };
 
 export const ScenarioLibrary: React.FC<{
@@ -208,7 +251,7 @@ export const ScenarioLibrary: React.FC<{
     );
   };
 
-  const { activeScenarios, customScenarios, scenarioProgress, addActiveScenario, removeActiveScenario, clearActiveScenarios, addCustomScenario } =
+  const { activeScenarios, customScenarios, favoriteScenarioIds, scenarioProgress, addActiveScenario, removeActiveScenario, clearActiveScenarios, addCustomScenario, toggleFavorite } =
     useScenariosStore();
 
   const [isAiStudioOpen, setIsAiStudioOpen] = useState(false);
@@ -221,6 +264,7 @@ export const ScenarioLibrary: React.FC<{
 
   // Quick preview & group collapsible state hooks
   const [previewScenario, setPreviewScenario] = useState<TMScenario | null>(null);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const allLibraryScenarios = [
@@ -228,17 +272,34 @@ export const ScenarioLibrary: React.FC<{
     ...customScenarios.map(sc => ({ ...sc, category: sc.category || "Custom" }))
   ];
 
+  const existingTags = React.useMemo(() => {
+    const tagsSet = new Set<string>();
+    allLibraryScenarios.forEach(sc => {
+      getScenarioTags(sc).forEach(t => tagsSet.add(t));
+    });
+    return Array.from(tagsSet).sort();
+  }, [allLibraryScenarios]);
+
   const categories = ["All", ...Array.from(new Set(allLibraryScenarios.map(sc => sc.category || "Uncategorized"))).sort()];
 
   const filteredPresets = allLibraryScenarios.filter((sc) => {
+    const tags = getScenarioTags(sc);
     const matchesSearch = sc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sc.description.toLowerCase().includes(searchQuery.toLowerCase());
+      sc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesCategory = activeCategory === "All" || (sc.category || "Uncategorized") === activeCategory;
     return matchesSearch && matchesCategory;
   });
 
   // Group sc by category (e.g. { "Basic Arithmetic": [...], "String Manipulation": [...] })
   const groupedPresetsByCat: Record<string, TMScenario[]> = {};
+  
+  // Filtered favorites for the virtual group
+  const favoritePresets = filteredPresets.filter(sc => favoriteScenarioIds.includes(sc.id));
+  if (favoritePresets.length > 0) {
+    groupedPresetsByCat["★ Favorites"] = favoritePresets;
+  }
+
   filteredPresets.forEach((sc) => {
     const cat = sc.category || "Uncategorized";
     if (!groupedPresetsByCat[cat]) {
@@ -247,13 +308,19 @@ export const ScenarioLibrary: React.FC<{
     groupedPresetsByCat[cat].push(sc);
   });
 
-  const sortedGroupedCategories = Object.keys(groupedPresetsByCat).sort((a, b) => {
-    return a.localeCompare(b);
-  });
+  const sortedGroupedCategories = Object.keys(groupedPresetsByCat)
+    .filter(cat => cat !== "★ Favorites")
+    .sort((a, b) => a.localeCompare(b));
+    
+  if (groupedPresetsByCat["★ Favorites"]) {
+    sortedGroupedCategories.unshift("★ Favorites");
+  }
 
   const filteredActiveScenarios = activeScenarios.filter((sc) => {
+    const tags = getScenarioTags(sc);
     const matchesSearch = sc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sc.description.toLowerCase().includes(searchQuery.toLowerCase());
+      sc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSearch;
   });
 
@@ -298,11 +365,11 @@ export const ScenarioLibrary: React.FC<{
       alert("No active scenario to save.");
       return;
     }
-    const defaultName = activeInstanceDetails.name.startsWith("Custom:") || activeInstanceDetails.name.startsWith("AI:") 
-      ? activeInstanceDetails.name 
-      : activeInstanceDetails.name;
-    const name = window.prompt("Enter name for custom scenario:", defaultName);
-    if (!name) return;
+    setIsSaveModalOpen(true);
+  };
+
+  const handleSavePreset = (name: string, tags: string[]) => {
+    if (!activeInstanceDetails) return;
 
     const currentRules = useTMStore.getState().rules;
     const currentTapeDict = useTMStore.getState().tape;
@@ -324,6 +391,7 @@ export const ScenarioLibrary: React.FC<{
       ...activeInstanceDetails,
       id: `custom-${Date.now()}`,
       name,
+      tags,
       category: activeInstanceDetails.category === "AI Generated" ? "AI Generated" : "Custom",
       rules: currentRules,
       initialTape: initialTapeStr,
@@ -331,7 +399,7 @@ export const ScenarioLibrary: React.FC<{
     };
     
     addCustomScenario(newCustomScenario);
-    alert(`Saved custom scenario: ${name}`);
+    setIsSaveModalOpen(false);
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -493,8 +561,18 @@ export const ScenarioLibrary: React.FC<{
                 </div>
               ) : (
                 sortedGroupedCategories.map((catName) => {
-                  const isCatCollapsed = !!collapsedCategories[catName];
+                  const isCatCollapsed = searchQuery ? false : !!collapsedCategories[catName];
                   const scList = groupedPresetsByCat[catName];
+                  
+                  // Sort scList so favorites are at the top, then alphabetically
+                  const scListSorted = [...scList].sort((a, b) => {
+                    const aFav = favoriteScenarioIds.includes(a.id);
+                    const bFav = favoriteScenarioIds.includes(b.id);
+                    if (aFav && !bFav) return -1;
+                    if (!aFav && bFav) return 1;
+                    return a.name.localeCompare(b.name);
+                  });
+
                   return (
                     <div key={catName} className="flex flex-col border border-border-main/50 rounded bg-bg-panel/10 overflow-hidden">
                       {/* Collapse Header */}
@@ -523,52 +601,80 @@ export const ScenarioLibrary: React.FC<{
                       {/* Scenario list inside category */}
                       {!isCatCollapsed && (
                         <div className="p-1 space-y-1">
-                          {scList.map((sc) => (
-                            <div
-                              key={sc.id}
-                              className="border border-border-main/20 hover:border-border-active hover:bg-bg-element/40 rounded transition-colors overflow-hidden group relative"
-                              title={`Objective: ${sc.description}\n\nInitial Tape: ${sc.initialTape}`}
-                            >
-                              <div className="flex items-center w-full bg-bg-surface/30">
-                                {/* Clicking the name toggles the expansion */}
-                                <button
-                                  onClick={() =>
-                                    setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
-                                  }
-                                  className="flex-1 text-left p-2 cursor-pointer pr-1 flex justify-between items-center transition-all bg-transparent border-0"
-                                >
-                                  <div className="text-xs font-bold text-text-primary pr-2">
-                                    {sc.name}
-                                  </div>
-                                </button>
-
-                                {/* Icon Buttons panel: Eye Icon & Expansion indicator */}
-                                <div className="flex items-center gap-1.5 px-2 shrink-0">
-                                  {/* Quick Preview Button */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setPreviewScenario(sc);
-                                    }}
-                                    className="p-1 hover:bg-primary-base hover:text-white rounded border border-border-main text-text-secondary bg-bg-element transition-colors cursor-pointer"
-                                    title={`Quick blueprint preview of ${sc.name}`}
-                                  >
-                                    <Eye size={11} />
-                                  </button>
-
+                          {scListSorted.map((sc) => {
+                            const isFav = favoriteScenarioIds.includes(sc.id);
+                            return (
+                              <div
+                                key={sc.id}
+                                className="border border-border-main/20 hover:border-border-active hover:bg-bg-element/40 rounded transition-colors overflow-hidden group relative"
+                                title={`Objective: ${sc.description}\n\nInitial Tape: ${sc.initialTape}`}
+                              >
+                                <div className="flex items-center w-full bg-bg-surface/30">
+                                  {/* Clicking the name toggles the expansion */}
                                   <button
                                     onClick={() =>
                                       setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
                                     }
-                                    className="p-1 text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-                                    title={selectedPreset === sc.id ? "Collapse Details" : "Expand Details"}
+                                    className="flex-1 text-left p-2 cursor-pointer pr-1 flex flex-col gap-1 bg-transparent border-0"
                                   >
-                                    <ChevronRight
-                                      size={14}
-                                      className={`text-text-muted transition-transform duration-200 ${selectedPreset === sc.id ? "rotate-90" : ""}`}
-                                    />
+                                    <div className="text-xs font-bold text-text-primary pr-2 flex items-center gap-1.5 flex-wrap">
+                                      {sc.name}
+                                      {isFav && (
+                                        <Star size={11} className="text-amber-400 fill-amber-400 shrink-0" />
+                                      )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {getScenarioTags(sc).map((tag) => (
+                                        <span key={tag} className="px-1 py-[1px] bg-bg-panel text-[8px] font-semibold text-text-muted rounded-full border border-border-main/40 hover:text-text-primary transition-colors">
+                                          #{tag}
+                                        </span>
+                                      ))}
+                                    </div>
                                   </button>
-                                </div>
+
+                                  {/* Icon Buttons panel: Star, Eye Icon & Expansion indicator */}
+                                  <div className="flex items-center gap-1.5 px-2 shrink-0">
+                                    {/* Star Toggle Button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFavorite(sc.id);
+                                      }}
+                                      className={`p-1 rounded border transition-colors cursor-pointer ${
+                                        isFav 
+                                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20" 
+                                          : "bg-bg-element text-text-secondary border-border-main hover:text-amber-400"
+                                      }`}
+                                      title={isFav ? "Remove from Favorites" : "Mark as Favorite (Pins to top)"}
+                                    >
+                                      <Star size={11} fill={isFav ? "currentColor" : "none"} />
+                                    </button>
+
+                                    {/* Quick Preview Button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPreviewScenario(sc);
+                                      }}
+                                      className="p-1 hover:bg-primary-base hover:text-white rounded border border-border-main text-text-secondary bg-bg-element transition-colors cursor-pointer"
+                                      title={`Quick blueprint preview of ${sc.name}`}
+                                    >
+                                      <Eye size={11} />
+                                    </button>
+
+                                    <button
+                                      onClick={() =>
+                                        setSelectedPreset(selectedPreset === sc.id ? null : sc.id)
+                                      }
+                                      className="p-1 text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                                      title={selectedPreset === sc.id ? "Collapse Details" : "Expand Details"}
+                                    >
+                                      <ChevronRight
+                                        size={14}
+                                        className={`text-text-muted transition-transform duration-200 ${selectedPreset === sc.id ? "rotate-90" : ""}`}
+                                      />
+                                    </button>
+                                  </div>
                               </div>
 
                               {/* Expanded Inline Detail */}
@@ -604,13 +710,21 @@ export const ScenarioLibrary: React.FC<{
                                 </div>
                               )}
                             </div>
-                          ))}
+                          )})}
                         </div>
                       )}
                     </div>
                   );
                 })
               )}
+            </div>
+            
+            {/* Library list count footer */}
+            <div className="p-2 border-t border-border-main bg-bg-panel/20 shrink-0 text-[10px] text-text-muted flex justify-between items-center font-sans">
+              <span>Filtered Scenarios:</span>
+              <span className="font-bold text-text-primary">
+                {filteredPresets.length} of {allLibraryScenarios.length}
+              </span>
             </div>
           </div>
         )}
@@ -672,7 +786,7 @@ export const ScenarioLibrary: React.FC<{
                       tabIndex={0}
                       className="flex-1 text-left p-2 cursor-pointer pr-1"
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <div
                           className={`text-xs font-bold ${activeInstanceDetails?.id === sc.id ? "text-primary-base" : "text-text-secondary"}`}
                         >
@@ -685,12 +799,37 @@ export const ScenarioLibrary: React.FC<{
                         }`}>
                           {status}
                         </div>
+                        
+                        {/* Star Toggle Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavorite(sc.id);
+                          }}
+                          className={`p-0.5 rounded transition-colors cursor-pointer ${
+                            favoriteScenarioIds.includes(sc.id)
+                              ? "text-amber-400 hover:text-amber-500"
+                              : "text-text-muted hover:text-amber-400"
+                          }`}
+                          title={favoriteScenarioIds.includes(sc.id) ? "Remove from Favorites" : "Mark as Favorite"}
+                        >
+                          <Star size={11} fill={favoriteScenarioIds.includes(sc.id) ? "currentColor" : "none"} />
+                        </button>
                       </div>
                       <div className="text-[10px] text-text-muted mt-1 leading-tight">
                         {activeInstanceDetails?.id === sc.id 
                           ? parseExpectedOutcome(sc.description).description
                           : sc.description
                         }
+                      </div>
+                      
+                      {/* Active Card Tags */}
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {getScenarioTags(sc).map((tag) => (
+                          <span key={tag} className="px-1 py-[1px] bg-bg-panel text-[8px] font-semibold text-text-muted rounded-full border border-border-main/40 hover:text-text-primary transition-colors">
+                            #{tag}
+                          </span>
+                        ))}
                       </div>
 
                       {activeInstanceDetails?.id === sc.id && (
@@ -794,6 +933,14 @@ export const ScenarioLibrary: React.FC<{
             })
             )}
             </div>
+
+            {/* Active list count footer */}
+            <div className="p-2 border-t border-border-main bg-bg-panel/20 shrink-0 text-[10px] text-text-muted flex justify-between items-center font-sans">
+              <span>Filtered Active:</span>
+              <span className="font-bold text-text-primary">
+                {filteredActiveScenarios.length} of {activeScenarios.length}
+              </span>
+            </div>
           </div>
         )}
 
@@ -804,8 +951,9 @@ export const ScenarioLibrary: React.FC<{
 
       {/* Quick Preview Modal Overlay */}
       {mounted && createPortal(
-        <AnimatePresence>
-          {previewScenario && (
+        <>
+          <AnimatePresence>
+            {previewScenario && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
               <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out] font-sans">
                 
@@ -972,7 +1120,20 @@ export const ScenarioLibrary: React.FC<{
             </div>
           </div>
         )}
-        </AnimatePresence>,
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {isSaveModalOpen && (
+              <SaveScenarioModal
+                isOpen={isSaveModalOpen}
+                onClose={() => setIsSaveModalOpen(false)}
+                onSave={handleSavePreset}
+                defaultName={activeInstanceDetails ? activeInstanceDetails.name : "My Custom Preset"}
+                existingTags={existingTags}
+              />
+            )}
+          </AnimatePresence>
+        </>,
         document.body
       )}
     </aside>

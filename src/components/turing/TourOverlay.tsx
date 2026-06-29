@@ -28,12 +28,21 @@ export const TourOverlay: React.FC<{ isActive: boolean; onClose: () => void }> =
 
     updateRect();
     window.addEventListener('resize', updateRect);
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     const t = setTimeout(updateRect, 300);
     return () => {
       window.removeEventListener('resize', updateRect);
+      window.removeEventListener('keydown', handleKeyDown);
       clearTimeout(t);
     };
-  }, [isActive, currentStep]);
+  }, [isActive, currentStep, onClose]);
 
   if (!isActive) return null;
 

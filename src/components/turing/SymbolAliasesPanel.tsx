@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTMStore } from '../../store/tmStore';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -14,6 +14,18 @@ export const SymbolAliasesPanel: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const [newSymbol, setNewSymbol] = useState('');
   const [newAlias, setNewAlias] = useState('');
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   const handleAdd = () => {
     if (!newSymbol.trim() || !newAlias.trim()) return;

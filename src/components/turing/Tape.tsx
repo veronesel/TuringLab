@@ -54,25 +54,25 @@ const TextPresets = [
 const getCellBgClass = (borderColorValue: string): string => {
   switch (borderColorValue) {
     case "border-red-500":
-      return "bg-red-500/20";
+      return "bg-[#2d1212]";
     case "border-orange-500":
-      return "bg-orange-500/20";
+      return "bg-[#2d1810]";
     case "border-amber-400":
-      return "bg-amber-400/20";
+      return "bg-[#2d2210]";
     case "border-emerald-500":
-      return "bg-emerald-500/20";
+      return "bg-[#102d1a]";
     case "border-cyan-400":
-      return "bg-cyan-400/20";
+      return "bg-[#10272d]";
     case "border-blue-500":
-      return "bg-blue-500/20";
+      return "bg-[#101a2d]";
     case "border-purple-500":
-      return "bg-purple-500/20";
+      return "bg-[#1a102d]";
     case "border-pink-500":
-      return "bg-pink-500/20";
+      return "bg-[#2d1020]";
     case "border-white":
-      return "bg-white/10";
+      return "bg-[#2a2a2a]";
     default:
-      return "bg-primary-base/20";
+      return "bg-[#101a2d]";
   }
 };
 
@@ -88,11 +88,11 @@ const getTapeSkinStyles = (
   let content: React.ReactNode =
     cellValue === "_" ? (
       <svg
-        style={{ width: "0.8em", height: "0.8em" }}
+        style={{ width: "0.85em", height: "0.85em" }}
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2.5"
+        strokeWidth="3.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
@@ -103,15 +103,17 @@ const getTapeSkinStyles = (
     );
 
   if (tapeSkin === "default") {
-    skinStyles = "font-mono text-2xl font-black";
+    skinStyles = isHead
+      ? "font-mono text-4xl font-black md:text-5xl"
+      : "font-mono text-3xl font-black md:text-4xl";
     if (aliasText) {
       skinStyles += " flex-col relative";
       content = (
         <>
-          <div className="absolute top-1 text-[8px] uppercase tracking-widest text-text-primary dark:text-white font-sans font-black truncate w-[90%] text-center">
+          <div className="absolute top-1 text-[8.5px] uppercase tracking-widest font-sans font-black opacity-80 truncate w-[90%] text-center">
             {aliasText}
           </div>
-          <div className="mt-2 text-text-primary dark:text-white font-black">
+          <div className="mt-2 font-black text-2xl md:text-3xl">
             {content}
           </div>
         </>
@@ -171,13 +173,13 @@ const getTapeSkinStyles = (
     const dist = Math.abs(cellIndex - headPosition);
     if (dist === 0) {
       skinStyles =
-        "font-mono text-3xl font-black bg-primary-base/20 border-2 border-primary-base text-primary-base z-40 shadow-[0_0_24px_rgba(59,130,246,0.6)] rounded-lg";
+        "font-mono text-3xl font-black bg-[#1a2b4c] border-2 border-primary-base text-primary-base z-40 shadow-[0_0_24px_rgba(59,130,246,0.6)] rounded-lg";
     } else if (dist === 1) {
       skinStyles =
-        "font-mono text-xl font-bold bg-bg-panel border border-border-main text-text-primary z-30 rounded-lg";
+        "font-mono text-xl font-bold bg-bg-panel border-2 border-neutral-500 dark:border-neutral-600 text-text-primary z-30 rounded-lg";
     } else {
       skinStyles =
-        "font-mono text-sm bg-bg-element border border-border-main text-[#cbd5e1] dark:text-[#f8fafc] font-bold transition-all duration-300 rounded-lg";
+        "font-mono text-sm bg-bg-element border-2 border-neutral-600 dark:border-neutral-700 text-[#cbd5e1] dark:text-[#f8fafc] font-bold transition-all duration-300 rounded-lg";
     }
   }
 
@@ -1128,26 +1130,20 @@ export const Tape: React.FC = () => {
                 tapeSkin === "default"
                   ? isHead
                     ? customBorderColor !== "default"
-                      ? customBorderColor
-                      : "border-primary-base"
+                      ? `border-2 ${customBorderColor}`
+                      : "border-2 border-primary-base"
                     : cell.value !== "_"
                       ? customBorderColor !== "default"
-                        ? customBorderColor
-                        : "border-primary-base"
-                      : "border-border-main"
+                        ? `border-2 ${customBorderColor}`
+                        : "border-2 border-neutral-400 dark:border-neutral-500"
+                      : "border-2 border-neutral-300 dark:border-neutral-600"
                   : "";
 
               const cellTextClass =
                 tapeSkin === "default"
-                  ? isHead
-                    ? customTextColor !== "default"
-                      ? customTextColor
-                      : "text-text-primary"
-                    : cell.value !== "_"
-                      ? customTextColor !== "default"
-                        ? customTextColor
-                        : "text-text-primary"
-                      : "text-text-primary"
+                  ? customTextColor !== "default"
+                    ? customTextColor
+                    : "text-text-primary"
                   : "";
 
               const cellBgClass =
@@ -1155,10 +1151,12 @@ export const Tape: React.FC = () => {
                   ? isHead
                     ? customBorderColor !== "default"
                       ? getCellBgClass(customBorderColor)
-                      : "bg-primary-base/30"
+                      : "bg-[#1a2b4c]"
                     : cell.value !== "_"
-                      ? getCellBgClass(customBorderColor)
-                      : ""
+                      ? customBorderColor !== "default"
+                        ? getCellBgClass(customBorderColor)
+                        : "bg-bg-panel"
+                      : "bg-bg-panel"
                   : "";
 
               // Dynamic scale, y, and opacity configurations
@@ -1271,21 +1269,13 @@ export const Tape: React.FC = () => {
                     }}
                     className={twMerge(
                       clsx(
-                        "w-full h-full flex items-center justify-center pointer-events-none rounded font-bold text-2xl select-none",
+                        "w-full h-full flex items-center justify-center pointer-events-none rounded select-none shadow-sm",
                         {
-                          "bg-bg-panel border-2 relative z-20 rounded-lg shadow-lg text-text-primary font-black md:text-3xl":
+                          "relative z-20 rounded-lg shadow-lg":
                             isHead,
                           "animate-pulse saturate-150": isHead && isRunning,
-                          "bg-bg-panel border border-border-main text-text-primary font-black shadow-sm":
-                            !isHead &&
-                            cell.value === "_" &&
-                            tapeSkin === "default",
-                          "bg-bg-panel font-black border-2 shadow-md text-text-primary":
-                            !isHead &&
-                            cell.value !== "_" &&
-                            tapeSkin === "default",
                           "ring-2 ring-primary-base z-10 shadow-lg": isHovered,
-                          "ring-2 ring-blue-500 bg-blue-500/20 z-10 font-bold":
+                          "ring-2 ring-blue-500 bg-blue-500/20 z-10":
                             isSelected && !isHead,
                         },
                         skinStyles,
